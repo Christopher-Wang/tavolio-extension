@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+Dockerfile*
+compose*.yaml
+docker-compose*.yml
+.git
+.gitignore
+README.md
+dist
+build
+coverage
+.turbo
+apps/google-sheets/dist
+packages/*/dist

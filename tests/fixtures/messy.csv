@@ -1,0 +1,6 @@
+Name,Age,Subscribed,Score,Notes
+alice,30,yes,0.9,loves the product a lot and writes long reviews every week
+bob,,no,0.4,short
+carol,25,TRUE,?,n/a
+dave,41,0,0.75,--
+erin,29,1,0.82,None

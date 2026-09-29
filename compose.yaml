@@ -1,0 +1,39 @@
+services:
+  # Interactive dev shell: source is bind-mounted, so run
+  # `docker compose run --rm base npm install` once first (writes
+  # node_modules back to the host dir through the mount), then
+  # `docker compose run --rm base npm run build`.
+  base:
+    build:
+      context: .
+      target: base
+    volumes:
+      - .:/repo
+    working_dir: /repo
+
+  # Self-contained: uses dist + node_modules baked in at image build time.
+  # No volumes, no install needed. Rebuild image to pick up source changes.
+  test:
+    build:
+      context: .
+      target: test
+
+  typecheck:
+    build:
+      context: .
+      target: base
+    command: npm run typecheck --workspaces --if-present
+
+  # Dev sidebar (bind-mounted source, sample data at http://localhost:5173).
+  # Requires the one-time install + build via `base` first (see above).
+  app:
+    build:
+      context: .
+      target: app
+    volumes:
+      - .:/repo
+    working_dir: /repo
+    ports:
+      - "5173:5173"
+    command: npm run dev --workspace=google-sheets -- --host 0.0.0.0 --port 5173
+

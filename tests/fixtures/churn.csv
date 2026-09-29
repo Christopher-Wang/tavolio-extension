@@ -1,0 +1,7 @@
+CustomerID,Age,Plan,MonthlySpend,Signup Date,Churn
+C001,34,Basic,29.99,2023-01-15,No
+C002,45,Pro,79.50,2023-02-01,No
+C003,23,Basic,19.99,2023-01-20,Yes
+C004,51,Enterprise,199.00,2022-11-05,No
+C005,,Pro,79.50,2023-03-10,Yes
+C006,29,Basic,N/A,2023-02-28,No

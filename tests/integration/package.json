@@ -1,0 +1,22 @@
+{
+  "name": "tests-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"dist/**/*.test.js\"",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@tavolio/models": "0.1.0",
+    "@tavolio/prediction": "0.1.0",
+    "@tavolio/preprocessing": "0.1.0",
+    "@tavolio/table": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "typescript": "^5.6.3"
+  }
+}

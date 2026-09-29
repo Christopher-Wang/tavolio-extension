@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.log
+.DS_Store
+apps/google-sheets/dist/
+apps/google-sheets/dev-dist/
+packages/*/dist/
+tests/integration/dist/
+.docker/

@@ -1,0 +1,29 @@
+{
+  "name": "tavolio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first tabular prediction for spreadsheets. Spreadsheet host is a shell; the tabular engine is the product.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tests/integration"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@tavolio/table && npm run build --workspace=@tavolio/preprocessing && npm run build --workspace=@tavolio/runtime && npm run build --workspace=@tavolio/models && npm run build --workspace=@tavolio/prediction && npm run build --workspace=tests-integration && npm run build --workspace=google-sheets",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:integration": "npm run test --workspace=tests-integration --if-present",
+    "dev:sheets": "npm run dev --workspace=google-sheets --if-present",
+    "docker:build": "docker build -t tavolio .",
+    "docker:test": "docker compose run --rm test",
+    "docker:dev": "docker compose up app"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  }
+}

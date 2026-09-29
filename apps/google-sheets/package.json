@@ -1,0 +1,28 @@
+{
+  "name": "google-sheets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "preview": "vite preview",
+    "clean": "rm -rf dist dev-dist"
+  },
+  "dependencies": {
+    "@tavolio/models": "0.1.0",
+    "@tavolio/prediction": "0.1.0",
+    "@tavolio/preprocessing": "0.1.0",
+    "@tavolio/table": "0.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
+}
