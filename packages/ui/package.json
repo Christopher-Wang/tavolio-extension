@@ -1,0 +1,32 @@
+{
+  "name": "@tavolio/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Host-agnostic Tavolio sidebar/task pane. Shipped as source; each host app bundles it with Vite.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dev": "./src/dev/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tavolio/models": "0.1.0",
+    "@tavolio/prediction": "0.1.0",
+    "@tavolio/preprocessing": "0.1.0",
+    "@tavolio/runtime": "0.1.0",
+    "@tavolio/table": "0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}

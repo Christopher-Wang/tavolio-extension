@@ -44,6 +44,11 @@ function isDatetimeLike(v: unknown): boolean {
   if (DATE_PATTERNS.some((re) => re.test(s))) return true;
   // Fall back to Date.parse only for strings containing a separator; avoids "42" parsing as year.
   if (!/[-/:,]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(s)) return false;
+  // V8's lenient parser reads IDs like "L-1001" as the year 1001: require a
+  // date shape (two numeric groups, or a month name plus a number).
+  const groups = s.match(/\d+/g)?.length ?? 0;
+  const month = /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(s);
+  if (groups < 2 && !(month && groups >= 1)) return false;
   const t = Date.parse(s);
   return Number.isFinite(t);
 }

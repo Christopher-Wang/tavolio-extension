@@ -4,17 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && node scripts/bundle-appsscript.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "vite --host 0.0.0.0 --port 5173",
     "preview": "vite preview",
     "clean": "rm -rf dist dev-dist"
   },
   "dependencies": {
-    "@tavolio/models": "0.1.0",
-    "@tavolio/prediction": "0.1.0",
-    "@tavolio/preprocessing": "0.1.0",
-    "@tavolio/table": "0.1.0",
+    "@tavolio/ui": "0.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -23,6 +20,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.6.3",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

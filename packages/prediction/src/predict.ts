@@ -4,10 +4,14 @@ import { columnValues, type Table } from "@tavolio/table";
 import { applySchema, inferSchema } from "@tavolio/preprocessing";
 import { inferTask } from "./classification.js";
 
+export type PredictStage = "preparing" | "predicting" | "evaluating";
+
 export interface PredictTableRequest {
   table: Table;
   target: string;
   modelId?: string;
+  /** Called as each stage starts; awaited so a UI can paint between stages. */
+  onProgress?: (stage: PredictStage) => void | Promise<void>;
 }
 
 // Register the bundled baseline so predictTable works with zero setup.
@@ -31,11 +35,13 @@ export async function predictTable({
   table,
   target,
   modelId = "local-tabular-v1",
+  onProgress,
 }: PredictTableRequest): Promise<PredictionResult> {
   ensureDefaultModel();
   if (!table.columns.some((c) => c.name === target)) {
     throw new Error(`Unknown target column: ${target}`);
   }
+  await onProgress?.("preparing");
 
   const inferred = inferSchema(table);
   const withSchema: Table = applySchema(table, inferred);
@@ -49,11 +55,14 @@ export async function predictTable({
     target,
     task,
   });
+  await onProgress?.("predicting");
   const outputs = await model.run(prepared);
-  return model.decode(outputs, {
+  await onProgress?.("evaluating");
+  const result = await model.decode(outputs, {
     table: withSchema,
     schema: withSchema.columns,
     target,
     task,
   });
+  return { ...result, model: { id: model.manifest.id, displayName: model.manifest.displayName } };
 }
