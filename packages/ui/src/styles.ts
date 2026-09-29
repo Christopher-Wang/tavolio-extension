@@ -79,6 +79,27 @@ export const css = /* css */ `
 @keyframes tv-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tv-screen, .tv-flash { animation: none !important; } }
 
+/* ---- Tabs ----------------------------------------------------------- */
+.tv-tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tv-tab {
+  padding: 8px 10px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  background: none; cursor: pointer; color: var(--muted); font-weight: 550;
+}
+.tv-tab:hover:not(:disabled) { color: var(--text); }
+.tv-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.tv-tab:disabled { opacity: 0.4; cursor: default; }
+.tv-banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px;
+  background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.tv-banner b { display: block; }
+.tv-banner-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.tv-target-info { margin-top: 10px; display: grid; gap: 2px; animation: tv-in 220ms var(--ease); }
+.tv-rowline { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
+.tv-select-sm .tv-select { height: 32px; font-weight: 500; }
+.tv-select-sm svg { top: 9px; }
+.tv-select-sm { margin-top: 4px; }
+
 /* ---- Type ----------------------------------------------------------- */
 .tv h1 { font-size: 17px; line-height: 1.3; font-weight: 650; letter-spacing: -0.015em; margin: 0 0 4px; }
 .tv h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 20px 0 8px; }

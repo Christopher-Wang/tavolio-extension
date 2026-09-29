@@ -1,7 +1,7 @@
 import { columnTopValues } from "@tavolio/preprocessing";
 import type { PredictionResult } from "@tavolio/models";
 import type { Analysis, Destination } from "../analysis.js";
-import { Back, Bar, Callout, Details, Icon, compact, num, pct, plural } from "../components.js";
+import { Bar, Callout, Details, Icon, compact, num, pct, plural } from "../components.js";
 
 export interface ResultsProps {
   analysis: Analysis;
@@ -11,7 +11,7 @@ export interface ResultsProps {
   /** Address written to, once the user has added predictions. */
   written: string | null;
   writeError: string | null;
-  onBack: () => void;
+  features: number;
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -24,17 +24,18 @@ const METRIC_LABELS: Record<string, string> = {
 };
 
 /** §6–§9: answer "is this useful?" first, then make adding predictions the payoff. */
-export function Results({ analysis, result, destination, onDestination, written, writeError, onBack }: ResultsProps) {
+export function Results({ analysis, result, destination, onDestination, written, writeError, features }: ResultsProps) {
   const target = result.target;
   const isClass = result.task.type === "classification";
   const blank = result.newRowIndexes ?? [];
   const ev = result.evaluation;
+  const predictedRows = blank.length > 0 ? blank : result.predictions.map((_, i) => i);
   const previewRows = (blank.length > 0 ? blank : result.predictions.map((_, i) => i)).slice(0, 5);
 
   return (
     <div className="tv-screen">
-      <Back onClick={onBack}>Change column</Back>
-      <h1>{target}</h1>
+      <h1>{target} prediction</h1>
+      <p className="tv-sub">{isClass ? "Classification" : "Regression"} · {plural(result.predictions.length, "row")}</p>
 
       <div className="tv-card">
         <div className="tv-card-title">Prediction quality</div>
@@ -46,6 +47,9 @@ export function Results({ analysis, result, destination, onDestination, written,
           <p className="tv-small">There aren't enough rows with a known {target} to measure accuracy yet.</p>
         )}
       </div>
+
+      <h2>Predictions</h2>
+      <PredictionSummary result={result} rows={[...predictedRows]} />
 
       {result.featureSignals && result.featureSignals.length > 0 && (
         <>
@@ -135,6 +139,18 @@ export function Results({ analysis, result, destination, onDestination, written,
         </Details>
       )}
 
+      <Details summary="Details">
+        <table className="tv-metrics">
+          <tbody>
+            <tr><td>Model</td><td>{result.model?.displayName ?? "Tavolio Flash"}</td></tr>
+            <tr><td>Execution</td><td>Local</td></tr>
+            <tr><td>Features</td><td>{features}</td></tr>
+            <tr><td>Rows</td><td>{analysis.table.rows.length.toLocaleString("en-US")}</td></tr>
+            <tr><td>Missing values</td><td>Handled automatically</td></tr>
+          </tbody>
+        </table>
+      </Details>
+
       {result.warnings.length > 0 && (
         <Details summary="Notes">
           {result.warnings.map((w) => (
@@ -145,6 +161,32 @@ export function Results({ analysis, result, destination, onDestination, written,
         </Details>
       )}
     </div>
+  );
+}
+
+function PredictionSummary({ result, rows }: { result: PredictionResult; rows: number[] }) {
+  if (result.task.type === "classification") {
+    const tally = new Map<string, number>();
+    for (const i of rows) tally.set(String(result.predictions[i]), (tally.get(String(result.predictions[i])) ?? 0) + 1);
+    return (
+      <ul className="tv-facts">
+        {[...tally].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, n]) => (
+          <li key={label}>
+            <b>{n.toLocaleString("en-US")}</b> predicted {label}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  const nums = rows.map((i) => Number(result.predictions[i])).filter(Number.isFinite).sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const mid = nums.length >> 1;
+  const med = nums.length % 2 ? nums[mid]! : (nums[mid - 1]! + nums[mid]!) / 2;
+  return (
+    <ul className="tv-facts">
+      <li>Median prediction <b>{compact(med)}</b></li>
+      <li>Range <b>{compact(nums[0]!)} – {compact(nums[nums.length - 1]!)}</b></li>
+    </ul>
   );
 }
 

@@ -1,7 +1,7 @@
 import { columnTopValues, isMissingValue, applySchema, inferSchema, profileColumns, type ColumnProfile } from "@tavolio/preprocessing";
 import { inferTask, isPredictError, predictTable, type PredictStage } from "@tavolio/prediction";
 import type { PredictionResult, Task } from "@tavolio/models";
-import { columnValues, fromValues, selectColumns, type ColumnSchema, type Table } from "@tavolio/table";
+import { columnValues, fromValues, selectColumns, type ColumnSchema, type ColumnType, type Table } from "@tavolio/table";
 import type { PredictionColumn, SheetTable, TableRef, WritePlan } from "./host.js";
 
 export const PREDICTION_SUFFIX = " (Tavolio prediction)";
@@ -20,6 +20,59 @@ export interface Analysis {
   profiles: ColumnProfile[];
   /** Column name -> 0-based offset within the sheet table. */
   offsets: Map<string, number>;
+  typeOverrides: Record<string, ColumnType>;
+}
+
+/** Share of non-empty cells across the whole table, 0..1. */
+export function completeness(a: Analysis): number {
+  if (a.profiles.length === 0) return 1;
+  return 1 - a.profiles.reduce((sum, p) => sum + p.missingRate, 0) / a.profiles.length;
+}
+
+export interface ColumnStats {
+  kind: "numeric" | "date" | "categorical" | "none";
+  /** Numeric: formatted lines like ["Range", "18 – 84"]. */
+  lines: Array<[string, string]>;
+  top: Array<{ value: string; share: number }>;
+}
+
+function median(sorted: number[]): number {
+  const m = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[m]! : (sorted[m - 1]! + sorted[m]!) / 2;
+}
+
+const fmt = (x: number) =>
+  Math.abs(x) >= 100 ? Math.round(x).toLocaleString("en-US") : x.toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+/** The lightweight per-column facts shown when a column is opened in Data. */
+export function columnStats(a: Analysis, name: string): ColumnStats {
+  const p = a.profiles.find((x) => x.name === name);
+  const raw = columnValues(a.table, name).filter((v) => !isMissingValue(v));
+  if (!p || raw.length === 0) return { kind: "none", lines: [], top: [] };
+  if (p.type === "numeric") {
+    const nums = raw.map(Number).filter(Number.isFinite).sort((x, y) => x - y);
+    if (nums.length === 0) return { kind: "none", lines: [], top: [] };
+    const mean = nums.reduce((x, y) => x + y, 0) / nums.length;
+    return {
+      kind: "numeric",
+      lines: [
+        ["Range", `${fmt(nums[0]!)} – ${fmt(nums[nums.length - 1]!)}`],
+        ["Median", fmt(median(nums))],
+        ["Mean", fmt(mean)],
+      ],
+      top: [],
+    };
+  }
+  if (p.type === "datetime") {
+    const times = raw.map((v) => Date.parse(String(v))).filter(Number.isFinite).sort((x, y) => x - y);
+    if (times.length === 0) return { kind: "none", lines: [], top: [] };
+    const d = (t: number) => new Date(t).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+    return { kind: "date", lines: [["Earliest", d(times[0]!)], ["Latest", d(times[times.length - 1]!)]], top: [] };
+  }
+  const top = columnTopValues(a.table, name)
+    .slice(0, 4)
+    .map((c) => ({ value: c.value, share: c.count / raw.length }));
+  return { kind: "categorical", lines: [], top };
 }
 
 function columnLetter(n: number): string {
@@ -29,7 +82,7 @@ function columnLetter(n: number): string {
 }
 
 /** Sheet values -> analyzed Table. Blank headers get "Column C"; duplicates get " (2)". */
-export function analyze(sheet: SheetTable): Analysis {
+export function analyze(sheet: SheetTable, typeOverrides: Record<string, ColumnType> = {}): Analysis {
   const [rawHeader = [], ...rows] = sheet.values;
   const seen = new Map<string, number>();
   const names = rawHeader.map((h, i) => {
@@ -44,10 +97,12 @@ export function analyze(sheet: SheetTable): Analysis {
     keep.map((k) => k.n),
     rows.map((r) => keep.map((k) => r[k.i])),
   );
-  const schema = inferSchema(table).columns;
+  const schema = inferSchema(table).columns.map((c) =>
+    typeOverrides[c.name] ? { ...c, type: typeOverrides[c.name]!, confidence: 1 } : c,
+  );
   const profiles = profileColumns(table, schema);
   const { values: _values, address: _address, ...ref } = sheet;
-  return { sheet, ref, table, schema, profiles, offsets: new Map(keep.map((k) => [k.n, k.i])) };
+  return { sheet, ref, table, schema, profiles, offsets: new Map(keep.map((k) => [k.n, k.i])), typeOverrides };
 }
 
 /** Sensible first guess: the last column Tavolio would actually use. */
@@ -91,7 +146,7 @@ export function runPrediction(
   onProgress: (stage: PredictStage) => void | Promise<void>,
 ): Promise<PredictionResult> {
   const names = a.table.columns.map((c) => c.name).filter((n) => n === target || !excluded.has(n));
-  return predictTable({ table: selectColumns(a.table, names), target, onProgress });
+  return predictTable({ table: selectColumns(a.table, names), target, typeOverrides: a.typeOverrides, onProgress });
 }
 
 export type Destination = "new-columns" | "new-sheet" | "fill-blanks";

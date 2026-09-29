@@ -1,6 +1,6 @@
 import { modelRegistry, type PredictionResult } from "@tavolio/models";
 import { LocalTabularModel } from "@tavolio/models";
-import { columnValues, type Table } from "@tavolio/table";
+import { columnValues, type ColumnType, type Table } from "@tavolio/table";
 import { applySchema, inferSchema } from "@tavolio/preprocessing";
 import { inferTask } from "./classification.js";
 
@@ -10,6 +10,8 @@ export interface PredictTableRequest {
   table: Table;
   target: string;
   modelId?: string;
+  /** Column types the user corrected; these win over inference. */
+  typeOverrides?: Record<string, ColumnType>;
   /** Called as each stage starts; awaited so a UI can paint between stages. */
   onProgress?: (stage: PredictStage) => void | Promise<void>;
 }
@@ -35,6 +37,7 @@ export async function predictTable({
   table,
   target,
   modelId = "local-tabular-v1",
+  typeOverrides,
   onProgress,
 }: PredictTableRequest): Promise<PredictionResult> {
   ensureDefaultModel();
@@ -43,7 +46,10 @@ export async function predictTable({
   }
   await onProgress?.("preparing");
 
-  const inferred = inferSchema(table);
+  const base = inferSchema(table);
+  const inferred = typeOverrides
+    ? { ...base, columns: base.columns.map((c) => (typeOverrides[c.name] ? { ...c, type: typeOverrides[c.name]!, confidence: 1 } : c)) }
+    : base;
   const withSchema: Table = applySchema(table, inferred);
   const targetValues = columnValues(withSchema, target);
   const task = inferTask(inferred.columns, target, targetValues);

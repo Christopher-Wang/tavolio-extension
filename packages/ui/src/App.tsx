@@ -15,19 +15,18 @@ import {
 import { HostError, NO_TABLE_MESSAGE, type HostBridge } from "./host.js";
 import { css } from "./styles.js";
 import { Icon, Logo } from "./components.js";
-import { Overview } from "./screens/Overview.js";
-import { Counts, Target } from "./screens/Target.js";
+import type { ColumnType } from "@tavolio/table";
+import { Data, type TypeChoice } from "./screens/Data.js";
+import { Counts, Predict } from "./screens/Predict.js";
 import { Running } from "./screens/Running.js";
 import { Results } from "./screens/Results.js";
 
-type Screen =
-  | { name: "loading" }
-  | { name: "empty"; message: string }
-  | { name: "overview" }
-  | { name: "target" }
+type Tab = "predict" | "data" | "results";
+type Run =
+  | { name: "idle" }
   | { name: "running"; stage: PredictStage }
-  | { name: "results"; result: PredictionResult }
   | { name: "error"; title: string; detail: string; counts?: Array<{ value: string; count: number }> };
+type Boot = { name: "loading" } | { name: "empty"; message: string } | { name: "ready" };
 
 export interface TavolioAppProps {
   host: HostBridge;
@@ -47,9 +46,13 @@ function nextPaint(): Promise<void> {
 }
 
 export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
-  const [screen, setScreen] = useState<Screen>({ name: "loading" });
+  const [boot, setBoot] = useState<Boot>({ name: "loading" });
+  const [tab, setTab] = useState<Tab>("predict");
+  const [run, setRun] = useState<Run>({ name: "idle" });
+  const [result, setResult] = useState<PredictionResult | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [overrides, setOverrides] = useState<Record<string, ColumnType>>({});
   const [openCol, setOpenCol] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [flashKey, setFlashKey] = useState(0);
@@ -58,19 +61,26 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
   const [writeError, setWriteError] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
+  /** Set when the user clicks outside the analyzed table while they have work in the pane. */
+  const [pending, setPending] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setScreen({ name: "loading" });
+    setBoot({ name: "loading" });
+    setPending(null);
     try {
       const sheet = await host.readTable();
       const a = analyze(sheet);
       setAnalysis(a);
       setExcluded(new Set());
+      setOverrides({});
       setOpenCol(null);
       setTarget(defaultTarget(a));
-      setScreen({ name: "overview" });
+      setResult(null);
+      setRun({ name: "idle" });
+      setTab("predict");
+      setBoot({ name: "ready" });
     } catch (e) {
-      setScreen({ name: "empty", message: e instanceof HostError ? e.message : NO_TABLE_MESSAGE });
+      setBoot({ name: "empty", message: e instanceof HostError ? e.message : NO_TABLE_MESSAGE });
     }
   }, [host]);
 
@@ -79,30 +89,39 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
     void getGpuInfo().then(setGpu);
   }, [load]);
 
-  // Clicking in the sheet drives the sidebar: on the empty screen it retries
-  // detection, on the column list it opens that column, and on the target
-  // screen it picks the target (§10).
-  const screenName = screen.name;
+  const bootName = boot.name;
+  const busy = run.name === "running";
   const analysisRef = useRef(analysis);
   analysisRef.current = analysis;
   const targetRef = useRef(target);
   targetRef.current = target;
+  const hasResult = result !== null;
+  // Clicking in the sheet drives the pane: retry on the empty screen, open the
+  // column on Data, pick the target on Predict. Clicking outside the table never
+  // discards results; it offers to analyze the new selection instead.
   useEffect(() => {
-    if (screenName !== "empty" && screenName !== "overview" && screenName !== "target") return;
+    if (busy || bootName === "loading") return;
     return host.watchActiveCell((cell) => {
-      if (screenName === "empty") return void load();
+      if (bootName === "empty") return void load();
       const a = analysisRef.current;
-      if (!a || cell.sheetName !== a.ref.sheetName) return;
+      if (!a) return;
       const offset = cell.column - a.ref.column;
+      const inside = cell.sheetName === a.ref.sheetName && offset >= 0 && offset < a.ref.columns;
+      if (!inside) {
+        if (hasResult) setPending(`${cell.sheetName}`);
+        else void load();
+        return;
+      }
+      setPending(null);
       const name = [...a.offsets].find(([, o]) => o === offset)?.[0];
       if (!name) return;
-      if (screenName === "overview") setOpenCol(name);
-      else if (name !== targetRef.current) {
+      if (tab === "data") setOpenCol(name);
+      else if (tab === "predict" && name !== targetRef.current) {
         setTarget(name);
         setFlashKey((k) => k + 1);
       }
     });
-  }, [host, screenName, load]);
+  }, [host, bootName, busy, hasResult, tab, load]);
 
   const preview = useMemo(
     () => (analysis && target ? previewTarget(analysis, target, excluded) : null),
@@ -114,21 +133,31 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
     if (name && analysis) void host.selectColumn(analysis.ref, analysis.offsets.get(name)!).catch(() => {});
   }
 
-  function toggleExclude(name: string) {
+  /** Overrides re-profile the table so the type, role and feature count all update at once. */
+  function choose(name: string, choice: TypeChoice) {
+    if (!analysis) return;
+    const skip = choice === "identifier" || choice === "ignore";
+    const nextOverrides = { ...overrides };
+    if (skip) delete nextOverrides[name];
+    else nextOverrides[name] = choice;
     setExcluded((prev) => {
       const next = new Set(prev);
-      if (!next.delete(name)) next.add(name);
+      if (skip) next.add(name);
+      else next.delete(name);
       return next;
     });
+    setOverrides(nextOverrides);
+    setAnalysis(analyze(analysis.sheet, nextOverrides));
+    setResult(null);
   }
 
   async function predict() {
     if (!analysis || !preview?.ok) return;
     const started = performance.now();
-    setScreen({ name: "running", stage: "preparing" });
+    setRun({ name: "running", stage: "preparing" });
     try {
-      const result = await runPrediction(analysis, target, excluded, async (stage) => {
-        setScreen({ name: "running", stage });
+      const res = await runPrediction(analysis, target, excluded, async (stage) => {
+        setRun({ name: "running", stage });
         await nextPaint();
       });
       const wait = MIN_RUNNING_MS - (performance.now() - started);
@@ -136,19 +165,21 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
       setWritten(null);
       setWriteError(null);
       setDestination("new-columns");
-      setScreen({ name: "results", result });
+      setResult(res);
+      setRun({ name: "idle" });
+      setTab("results");
     } catch (e) {
-      if (isPredictError(e)) setScreen({ name: "error", title: e.title, detail: e.detail, counts: e.counts });
-      else setScreen({ name: "error", title: "Something went wrong", detail: e instanceof Error ? e.message : String(e) });
+      if (isPredictError(e)) setRun({ name: "error", title: e.title, detail: e.detail, counts: e.counts });
+      else setRun({ name: "error", title: "This table couldn't be analyzed", detail: e instanceof Error ? e.message : String(e) });
     }
   }
 
   async function addToSheet() {
-    if (!analysis || screen.name !== "results") return;
+    if (!analysis || !result) return;
     setWriting(true);
     setWriteError(null);
     try {
-      const res = await host.write(buildWritePlan(analysis, screen.result, destination));
+      const res = await host.write(buildWritePlan(analysis, result, destination));
       if (!res.address) setWriteError("Nothing to fill: those cells already have values.");
       else setWritten(res.sheetName === analysis.ref.sheetName ? res.address : `${res.sheetName}!${res.address}`);
     } catch (e) {
@@ -160,121 +191,113 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
 
   let body: ReactNode = null;
   let footer: ReactNode = null;
-  switch (screen.name) {
-    case "loading":
-      body = <Skeleton />;
-      break;
-    case "empty":
-      body = (
-        <div className="tv-screen tv-empty">
-          <EmptyArt />
-          <h1>Select your table</h1>
-          <p className="tv-sub">{screen.message}</p>
-        </div>
-      );
-      footer = (
-        <button className="tv-btn tv-btn-primary tv-btn-block" onClick={() => void load()}>
-          Use current selection
-        </button>
-      );
-      break;
-    case "overview":
-      body = (
-        <Overview
-          analysis={analysis!}
-          excluded={excluded}
-          open={openCol}
-          onOpen={openColumn}
-          onToggleExclude={toggleExclude}
-        />
-      );
-      footer = (
-        <button className="tv-btn tv-btn-primary tv-btn-block" onClick={() => setScreen({ name: "target" })}>
-          Continue
-        </button>
-      );
-      break;
-    case "target":
-      body = (
-        <Target
-          analysis={analysis!}
-          target={target}
-          preview={preview!}
-          flashKey={flashKey}
-          onTarget={setTarget}
-          onBack={() => setScreen({ name: "overview" })}
-        />
-      );
-      footer = (
-        <button className="tv-btn tv-btn-primary tv-btn-block" disabled={!preview?.ok} onClick={() => void predict()}>
-          Predict {target}
-        </button>
-      );
-      break;
-    case "running":
-      body = (
-        <Running
-          target={target}
-          stage={screen.stage}
-          rows={analysis!.table.rows.length}
-          features={preview?.ok ? preview.features : 0}
-          model={LOCAL_TABULAR_MANIFEST.displayName}
-          gpu={gpu}
-          host={host.kind}
-        />
-      );
-      break;
-    case "results":
-      body = (
-        <Results
-          analysis={analysis!}
-          result={screen.result}
-          destination={destination}
-          onDestination={(d) => {
-            setDestination(d);
-            setWritten(null);
-          }}
-          written={written}
-          writeError={writeError}
-          onBack={() => setScreen({ name: "target" })}
-        />
-      );
-      footer = (
-        <button
-          className="tv-btn tv-btn-primary tv-btn-block"
-          disabled={writing || written !== null}
-          onClick={() => void addToSheet()}
-        >
-          {writing ? "Adding…" : written ? "Added" : "Add predictions to sheet"}
-        </button>
-      );
-      break;
-    case "error":
-      body = (
-        <div className="tv-screen">
-          <h1>{screen.title}</h1>
-          <p className="tv-sub">{screen.detail}</p>
-          {screen.counts && <Counts counts={screen.counts} />}
-        </div>
-      );
-      footer = (
-        <button className="tv-btn tv-btn-block" onClick={() => setScreen({ name: "target" })}>
-          Choose another column
-        </button>
-      );
-      break;
+  const features = preview?.ok ? preview.features : 0;
+  if (boot.name === "loading") {
+    body = <Skeleton />;
+  } else if (boot.name === "empty") {
+    body = (
+      <div className="tv-screen tv-empty">
+        <EmptyArt />
+        <h1>Make predictions from your spreadsheet</h1>
+        <p className="tv-sub">Select a table or range to get started.</p>
+        <p className="tv-small">{boot.message}</p>
+      </div>
+    );
+    footer = (
+      <button className="tv-btn tv-btn-primary tv-btn-block" onClick={() => void load()}>
+        Use current selection
+      </button>
+    );
+  } else if (run.name === "running") {
+    body = (
+      <Running
+        target={target}
+        stage={run.stage}
+        rows={analysis!.table.rows.length}
+        features={features}
+        model={LOCAL_TABULAR_MANIFEST.displayName}
+        gpu={gpu}
+        host={host.kind}
+      />
+    );
+  } else if (tab === "data") {
+    body = <Data analysis={analysis!} excluded={excluded} open={openCol} onOpen={openColumn} onChoose={choose} />;
+  } else if (tab === "results" && result) {
+    body = (
+      <Results
+        analysis={analysis!}
+        result={result}
+        destination={destination}
+        onDestination={(d) => {
+          setDestination(d);
+          setWritten(null);
+        }}
+        written={written}
+        writeError={writeError}
+        features={features}
+      />
+    );
+    footer = (
+      <button
+        className="tv-btn tv-btn-primary tv-btn-block"
+        disabled={writing || written !== null}
+        onClick={() => void addToSheet()}
+      >
+        {writing ? "Adding…" : written ? "Predictions added" : "Add predictions to sheet"}
+      </button>
+    );
+  } else if (run.name === "error") {
+    body = (
+      <div className="tv-screen">
+        <h1>{run.title}</h1>
+        <p className="tv-sub">{run.detail}</p>
+        {run.counts && <Counts counts={run.counts} />}
+      </div>
+    );
+    footer = (
+      <button className="tv-btn tv-btn-block" onClick={() => setRun({ name: "idle" })}>
+        Review columns
+      </button>
+    );
+  } else {
+    body = (
+      <Predict
+        analysis={analysis!}
+        target={target}
+        preview={preview!}
+        gpu={gpu}
+        modelName={LOCAL_TABULAR_MANIFEST.displayName}
+        flashKey={flashKey}
+        onTarget={(t) => {
+          setTarget(t);
+          setRun({ name: "idle" });
+        }}
+        onViewFeatures={() => setTab("data")}
+      />
+    );
+    footer = (
+      <button className="tv-btn tv-btn-primary tv-btn-block" disabled={!preview?.ok} onClick={() => void predict()}>
+        Predict {target}
+      </button>
+    );
   }
 
+  const ready = boot.name === "ready";
   const ref = analysis?.sheet;
+  const tabs: Array<{ id: Tab; label: string; disabled?: boolean }> = [
+    { id: "predict", label: "Predict" },
+    { id: "data", label: "Data" },
+    { id: "results", label: "Results", disabled: !result },
+  ];
   return (
     <div className="tv" data-theme={theme}>
       <style>{css}</style>
       <header className="tv-header">
         <span className="tv-brand">
           <Logo />
-          Tavolio
+          tavolio
         </span>
-        {ref && screen.name !== "empty" && screen.name !== "loading" && (
+        {ref && ready && (
           <span className="tv-chip" title={`${ref.sheetName}!${ref.address}`}>
             <span>
               {ref.sheetName} · {ref.address}
@@ -283,7 +306,7 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
               className="tv-icon-btn"
               aria-label="Read the selection again"
               title="Read the selection again"
-              disabled={screen.name === "running"}
+              disabled={busy}
               onClick={() => void load()}
             >
               <Icon.refresh />
@@ -291,6 +314,38 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
           </span>
         )}
       </header>
+      {ready && (
+        <nav className="tv-tabs" role="tablist" aria-label="Tavolio">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              className="tv-tab"
+              aria-selected={tab === t.id}
+              disabled={t.disabled || busy}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      )}
+      {pending && ready && (
+        <div className="tv-banner" role="status">
+          <div>
+            <b>New data selected</b>
+            <span className="tv-small">{pending}</span>
+          </div>
+          <div className="tv-banner-actions">
+            <button className="tv-link" onClick={() => void load()}>
+              Analyze new selection
+            </button>
+            <button className="tv-link" style={{ color: "var(--muted)" }} onClick={() => setPending(null)}>
+              Keep current results
+            </button>
+          </div>
+        </div>
+      )}
       <main className="tv-main">{body}</main>
       {footer && <footer className="tv-footer">{footer}</footer>}
     </div>
@@ -316,7 +371,7 @@ export function TavolioLoading({ theme = "light" }: Pick<TavolioAppProps, "theme
       <header className="tv-header">
         <span className="tv-brand">
           <Logo />
-          Tavolio
+          tavolio
         </span>
       </header>
       <main className="tv-main">

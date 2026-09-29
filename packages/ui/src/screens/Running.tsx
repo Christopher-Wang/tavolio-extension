@@ -4,9 +4,9 @@ import type { PredictStage } from "../analysis.js";
 import { Details, Icon } from "../components.js";
 
 const STEPS: Array<{ stage: PredictStage; label: string }> = [
-  { stage: "preparing", label: "Preparing your data" },
-  { stage: "predicting", label: "Learning patterns" },
-  { stage: "evaluating", label: "Checking accuracy" },
+  { stage: "preparing", label: "Preparing data…" },
+  { stage: "predicting", label: "Running model…" },
+  { stage: "evaluating", label: "Evaluating predictions…" },
 ];
 
 export interface RunningProps {
@@ -63,8 +63,8 @@ export function Running({ target, stage, rows, features, model, gpu, host }: Run
       <div className="tv-privacy">
         <Icon.lock />
         <div>
-          <b>Running on your device</b>
-          Your spreadsheet data isn't uploaded anywhere.
+          <b>Running locally</b>
+          Your spreadsheet data doesn't leave your device.
         </div>
       </div>
       <Details summary="Details">
