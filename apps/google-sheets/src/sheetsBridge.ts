@@ -1,8 +1,10 @@
 import { HostError, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult } from "@tavolio/ui";
 
 /**
- * Google Sheets implementation of HostBridge. The ONLY file that knows about
- * google.script.run; the server half lives in appsscript/Code.gs.
+ * Google Sheets implementation of HostBridge. The server half lives in
+ * appsscript/Code.gs. Calls go through a transport: google.script.run when the
+ * UI is inlined in the sidebar, or postMessage when it is hosted in an iframe
+ * (see iframeTransport.ts and appsscript/Shell.html).
  */
 
 type Runner = Record<string, (...args: unknown[]) => void> & {
@@ -20,13 +22,15 @@ export function hasAppsScript(): boolean {
   return !!window.google?.script?.run;
 }
 
-function call<T>(fn: string, ...args: unknown[]): Promise<T> {
-  return new Promise((resolve, reject) => {
+export type Call = <T>(fn: string, ...args: unknown[]) => Promise<T>;
+
+export const appsScriptCall: Call = <T>(fn: string, ...args: unknown[]) => {
+  return new Promise<T>((resolve, reject) => {
     window.google!.script!.run!.withSuccessHandler((v) => resolve(v as T))
       .withFailureHandler(reject)
       [fn]!(...args);
   });
-}
+};
 
 /** Sheets has no selection events for sidebars, so poll while someone is listening. */
 const POLL_MS = 900;
@@ -35,9 +39,11 @@ export class SheetsBridge implements HostBridge {
   readonly kind = "sheets" as const;
   readonly selectionEvents = "polled" as const;
 
+  constructor(private readonly call: Call = appsScriptCall) {}
+
   async readTable(): Promise<SheetTable> {
     try {
-      return await call<SheetTable>("tavolioReadTable");
+      return await this.call<SheetTable>("tavolioReadTable");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("TAVOLIO_NO_TABLE")) {
@@ -48,7 +54,7 @@ export class SheetsBridge implements HostBridge {
   }
 
   selectColumn(table: TableRef, offset: number): Promise<void> {
-    return call("tavolioSelectColumn", table, offset);
+    return this.call("tavolioSelectColumn", table, offset);
   }
 
   watchActiveCell(cb: (cell: ActiveCell) => void): () => void {
@@ -57,7 +63,7 @@ export class SheetsBridge implements HostBridge {
     let timer: ReturnType<typeof setTimeout>;
     const tick = async () => {
       try {
-        const cell = await call<ActiveCell | null>("tavolioActiveCell");
+        const cell = await this.call<ActiveCell | null>("tavolioActiveCell");
         const key = cell ? `${cell.sheetName}:${cell.column}` : "";
         // The first reading is the baseline; only report moves after subscribing.
         if (!stopped && last !== null && key !== last && cell) cb(cell);
@@ -75,6 +81,6 @@ export class SheetsBridge implements HostBridge {
   }
 
   write(plan: WritePlan): Promise<WriteResult> {
-    return call<WriteResult>("tavolioWrite", plan);
+    return this.call<WriteResult>("tavolioWrite", plan);
   }
 }

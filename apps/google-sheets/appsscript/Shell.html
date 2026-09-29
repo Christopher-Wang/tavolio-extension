@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      iframe { border: 0; width: 100%; height: 100%; display: block; }
+    </style>
+  </head>
+  <body>
+    <iframe id="app" src="<?= url ?>"></iframe>
+    <script>
+      // Relay between the hosted Tavolio UI (iframe) and the spreadsheet (google.script.run).
+      var APP_ORIGIN = <?!= JSON.stringify(origin) ?>;
+      var ALLOWED = ["tavolioReadTable", "tavolioActiveCell", "tavolioSelectColumn", "tavolioWrite"];
+      var frame = document.getElementById("app");
+      window.addEventListener("message", function (e) {
+        if (e.source !== frame.contentWindow || e.origin !== APP_ORIGIN) return;
+        var m = e.data;
+        if (!m || m.tavolio !== 1 || ALLOWED.indexOf(m.fn) === -1) return;
+        function reply(p) {
+          e.source.postMessage(Object.assign({ tavolio: 1, id: m.id }, p), APP_ORIGIN);
+        }
+        var run = google.script.run
+          .withSuccessHandler(function (v) { reply({ ok: true, value: v }); })
+          .withFailureHandler(function (err) { reply({ ok: false, error: String((err && err.message) || err) }); });
+        run[m.fn].apply(run, m.args || []);
+      });
+    </script>
+  </body>
+</html>

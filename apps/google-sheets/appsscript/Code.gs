@@ -7,6 +7,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Tavolio")
     .addItem("Open Tavolio", "showSidebar")
+    .addItem("Open Tavolio (hosted, beta)", "showHostedSidebar")
     .addSeparator()
     .addItem("Device check", "showGpuProbe")
     .addToUi();
@@ -20,6 +21,17 @@ function showSidebar() {
   // Sidebar.html is the single-file build: `npm run build` -> dist/appsscript/Sidebar.html
   const html = HtmlService.createHtmlOutputFromFile("Sidebar").setTitle("Tavolio");
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+// The hosted build (GitHub Pages) is the same UI Excel loads. It runs in an iframe here and
+// reaches the sheet through Shell.html's postMessage relay.
+const TAVOLIO_HOSTED_URL = "https://christopher-wang.github.io/tavolio/";
+
+function showHostedSidebar() {
+  const t = HtmlService.createTemplateFromFile("Shell");
+  t.url = TAVOLIO_HOSTED_URL + "?host=sheets";
+  t.origin = TAVOLIO_HOSTED_URL.replace(/^(https:\/\/[^\/]+).*$/, "$1");
+  SpreadsheetApp.getUi().showSidebar(t.evaluate().setTitle("Tavolio"));
 }
 
 /** Diagnostics: can this sidebar iframe run WebGPU / wasm / workers / fetch models? */
