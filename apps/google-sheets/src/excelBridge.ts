@@ -1,4 +1,4 @@
-import { HostError, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult, type PredictionColumn } from "@tavolio/ui";
+import { HostError, NO_TABLE_MESSAGE, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult, type PredictionColumn } from "@tavolio/ui";
 
 /**
  * Excel implementation of HostBridge (Office.js). Same contract and write
@@ -306,5 +306,5 @@ export class ExcelBridge implements HostBridge {
 }
 
 function noTable(): HostError {
-  return new HostError("no-table", "Select any cell inside your table, and Tavolio will find the rest.");
+  return new HostError("no-table", NO_TABLE_MESSAGE);
 }

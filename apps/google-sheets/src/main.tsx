@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { TavolioApp, type HostBridge } from "@tavolio/ui";
+import { TavolioApp, TavolioLoading, type HostBridge } from "@tavolio/ui";
 import { ExcelBridge, loadOffice } from "./excelBridge.js";
 import { isEmbeddedInSheetsShell, iframeCall } from "./iframeTransport.js";
 import { SheetsBridge, hasAppsScript } from "./sheetsBridge.js";
@@ -20,7 +20,7 @@ async function pickHost(): Promise<HostBridge | null> {
 }
 
 const root = createRoot(document.getElementById("root")!);
-root.render(<p style={{ font: "13px system-ui", padding: 16, color: "#666" }}>Loading Tavolio…</p>);
+root.render(<TavolioLoading />);
 
 void pickHost().then((host) => {
   if (host) {

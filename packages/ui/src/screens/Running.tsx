@@ -1,4 +1,5 @@
 import type { GpuInfo } from "@tavolio/runtime";
+import type { HostKind } from "../host.js";
 import type { PredictStage } from "../analysis.js";
 import { Details, Icon } from "../components.js";
 
@@ -15,6 +16,7 @@ export interface RunningProps {
   features: number;
   model: string;
   gpu: GpuInfo | null;
+  host: HostKind;
 }
 
 function gpuLabel(gpu: GpuInfo | null): string {
@@ -24,8 +26,25 @@ function gpuLabel(gpu: GpuInfo | null): string {
   return [gpu.vendor, gpu.architecture].filter(Boolean).join(" ") || "Available";
 }
 
+/** What the user can actually do about missing graphics acceleration, by where Tavolio runs. */
+function gpuAdvice(gpu: GpuInfo | null, host: HostKind): string | null {
+  if (!gpu || gpu.status === "available") return null;
+  if (host === "excel") {
+    return "Excel uses your system's built-in web view, so this depends on your Excel and operating system versions. Updating both usually helps.";
+  }
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  if (/Firefox\//.test(ua)) {
+    return "WebGPU support in Firefox depends on its version and your operating system. Updating Firefox is the first thing to try.";
+  }
+  if (gpu.status === "disabled" && /Chrome\//.test(ua)) {
+    return 'Graphics acceleration is off in your browser. Open Settings → System, turn on "Use graphics acceleration when available", then restart the browser.';
+  }
+  return "This browser doesn't offer graphics acceleration, so Tavolio uses your CPU instead. Updating your browser may help.";
+}
+
 /** §5: lightweight, reassuring, technical details one click away. */
-export function Running({ target, stage, rows, features, model, gpu }: RunningProps) {
+export function Running({ target, stage, rows, features, model, gpu, host }: RunningProps) {
+  const advice = gpuAdvice(gpu, host);
   const current = STEPS.findIndex((s) => s.stage === stage);
   return (
     <div className="tv-screen">
@@ -73,10 +92,9 @@ export function Running({ target, stage, rows, features, model, gpu }: RunningPr
             </tr>
           </tbody>
         </table>
-        {gpu?.status === "disabled" && (
+        {advice && (
           <p className="tv-small" style={{ marginTop: 8 }}>
-            Graphics acceleration is off in your browser. In Chrome, open Settings → System and turn on "Use graphics
-            acceleration when available", then restart Chrome.
+            {advice}
           </p>
         )}
       </Details>

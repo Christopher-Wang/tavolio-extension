@@ -12,7 +12,7 @@ import {
   type Destination,
   type PredictStage,
 } from "./analysis.js";
-import { HostError, type HostBridge } from "./host.js";
+import { HostError, NO_TABLE_MESSAGE, type HostBridge } from "./host.js";
 import { css } from "./styles.js";
 import { Icon, Logo } from "./components.js";
 import { Overview } from "./screens/Overview.js";
@@ -70,9 +70,7 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
       setTarget(defaultTarget(a));
       setScreen({ name: "overview" });
     } catch (e) {
-      const message =
-        e instanceof HostError ? e.message : "Click any cell inside your table, and Tavolio will find the rest.";
-      setScreen({ name: "empty", message });
+      setScreen({ name: "empty", message: e instanceof HostError ? e.message : NO_TABLE_MESSAGE });
     }
   }, [host]);
 
@@ -164,14 +162,7 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
   let footer: ReactNode = null;
   switch (screen.name) {
     case "loading":
-      body = (
-        <div aria-busy="true" aria-label="Reading your table">
-          <div className="tv-skel" style={{ width: "55%", height: 18 }} />
-          <div className="tv-skel" style={{ width: "80%" }} />
-          <div className="tv-skel" style={{ height: 48, marginTop: 16 }} />
-          <div className="tv-skel" style={{ height: 160 }} />
-        </div>
-      );
+      body = <Skeleton />;
       break;
     case "empty":
       body = (
@@ -229,6 +220,7 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
           features={preview?.ok ? preview.features : 0}
           model={LOCAL_TABULAR_MANIFEST.displayName}
           gpu={gpu}
+          host={host.kind}
         />
       );
       break;
@@ -301,6 +293,35 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
       </header>
       <main className="tv-main">{body}</main>
       {footer && <footer className="tv-footer">{footer}</footer>}
+    </div>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div aria-busy="true" aria-label="Reading your table">
+      <div className="tv-skel" style={{ width: "55%", height: 18 }} />
+      <div className="tv-skel" style={{ width: "80%" }} />
+      <div className="tv-skel" style={{ height: 48, marginTop: 16 }} />
+      <div className="tv-skel" style={{ height: 160 }} />
+    </div>
+  );
+}
+
+/** The app's first paint, shown by hosts while they work out where they're running. */
+export function TavolioLoading({ theme = "light" }: Pick<TavolioAppProps, "theme">) {
+  return (
+    <div className="tv" data-theme={theme}>
+      <style>{css}</style>
+      <header className="tv-header">
+        <span className="tv-brand">
+          <Logo />
+          Tavolio
+        </span>
+      </header>
+      <main className="tv-main">
+        <Skeleton />
+      </main>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { HostError, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult } from "@tavolio/ui";
+import { HostError, NO_TABLE_MESSAGE, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult } from "@tavolio/ui";
 
 /**
  * Google Sheets implementation of HostBridge. The server half lives in
@@ -47,7 +47,7 @@ export class SheetsBridge implements HostBridge {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("TAVOLIO_NO_TABLE")) {
-        throw new HostError("no-table", "Click any cell inside your table, and Tavolio will find the rest.");
+        throw new HostError("no-table", NO_TABLE_MESSAGE);
       }
       throw e;
     }

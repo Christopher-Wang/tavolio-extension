@@ -60,6 +60,9 @@ export interface WriteResult {
 
 export type HostErrorCode = "no-selection" | "no-table";
 
+/** Shown when nothing usable is selected. One wording for every host. */
+export const NO_TABLE_MESSAGE = "Select any cell inside your table, and Tavolio will find the rest.";
+
 export class HostError extends Error {
   constructor(
     readonly code: HostErrorCode,

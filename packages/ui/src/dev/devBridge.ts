@@ -1,4 +1,4 @@
-import { HostError, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult } from "../host.js";
+import { HostError, NO_TABLE_MESSAGE, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult } from "../host.js";
 
 /** 1-based rectangle. */
 export interface Rect {
@@ -89,7 +89,7 @@ export class DevBridge implements HostBridge {
     const g = this.grid();
     const r = this.dataRegion(this.state.cell.row, this.state.cell.column);
     if (!r || r.bottom - r.top < 1) {
-      throw new HostError("no-table", "Click any cell inside your table, and Tavolio will find the rest.");
+      throw new HostError("no-table", NO_TABLE_MESSAGE);
     }
     const values = [];
     for (let row = r.top; row <= r.bottom; row++) {
