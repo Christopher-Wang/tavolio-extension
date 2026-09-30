@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ColumnType } from "@tavolio/table";
+import { formatNumber } from "./numfmt.js";
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
@@ -145,18 +146,10 @@ export function pct(x: number): string {
   return `${Math.round(x * 100)}%`;
 }
 
-export function num(x: number): string {
-  const abs = Math.abs(x);
-  if (abs >= 100) return Math.round(x).toLocaleString("en-US");
-  if (abs >= 1) return x.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  return x.toLocaleString("en-US", { maximumSignificantDigits: 2 });
-}
+export const num = formatNumber;
 
-/** Short form for tight spots (bar labels): 42,621,815 -> 42.6M. */
-export function compact(x: number): string {
-  if (Math.abs(x) < 10_000) return num(x);
-  return x.toLocaleString("en-US", { notation: "compact", maximumSignificantDigits: 3 });
-}
+/** Kept for call sites that used a separate short form; num() is now always short. */
+export const compact = formatNumber;
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;

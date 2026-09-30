@@ -81,7 +81,18 @@ export interface HostBridge {
   readTable(): Promise<SheetTable>;
   /** Highlight one table column (0-based offset) in the grid. */
   selectColumn(table: TableRef, offset: number): Promise<void>;
+  /**
+   * 0-based data-row indexes of the table that the user's current selection covers
+   * (header excluded, rows outside the table ignored). Empty when none.
+   */
+  readSelectedRows(table: TableRef): Promise<number[]>;
   /** Subscribe to active-cell changes. Returns an unsubscribe function. */
   watchActiveCell(cb: (cell: ActiveCell) => void): () => void;
   write(plan: WritePlan): Promise<WriteResult>;
+  /** The host's own light/dark theme, when it has one (Excel). Overrides TavolioApp's `theme` prop. */
+  theme?(): HostTheme | null;
+  /** Subscribe to host theme changes. Returns an unsubscribe function. */
+  watchTheme?(cb: (theme: HostTheme) => void): () => void;
 }
+
+export type HostTheme = "light" | "dark";

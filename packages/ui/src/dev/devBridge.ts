@@ -115,6 +115,14 @@ export class DevBridge implements HostBridge {
     this.changed();
   }
 
+  async readSelectedRows(t: TableRef): Promise<number[]> {
+    const sel = this.state.selection ?? { top: this.state.cell.row, bottom: this.state.cell.row, left: 1, right: 1 };
+    if (this.state.active !== t.sheetName) return [];
+    const rows: number[] = [];
+    for (let r = Math.max(sel.top, t.row + 1); r <= Math.min(sel.bottom, t.row + t.rows); r++) rows.push(r - t.row - 1);
+    return rows;
+  }
+
   watchActiveCell(cb: (cell: ActiveCell) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);

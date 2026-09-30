@@ -1,4 +1,4 @@
-import { HostError, NO_TABLE_MESSAGE, type ActiveCell, type HostBridge, type SheetTable, type TableRef, type WritePlan, type WriteResult, type PredictionColumn } from "@tavolio/ui";
+import { HostError, NO_TABLE_MESSAGE, type ActiveCell, type HostBridge, type HostTheme, type SheetTable, type TableRef, type WritePlan, type WriteResult, type PredictionColumn } from "@tavolio/ui";
 
 /**
  * Excel implementation of HostBridge (Office.js). Same contract and write
@@ -50,6 +50,16 @@ function serialToIso(serial: number): string {
 /** A leading = + - @ would be parsed as a formula; an apostrophe forces text. */
 function asLiteral(v: string | number): string | number {
   return typeof v === "string" && /^[=+\-@]/.test(v) ? `'${v}` : v;
+}
+
+/** Office's theme colors are "#RRGGBB"; a dark pane background means a dark Office theme. */
+function officeTheme(): HostTheme | null {
+  const hex = Office.context.officeTheme?.bodyBackgroundColor;
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? "");
+  if (!m) return null;
+  const n = parseInt(m[1]!, 16);
+  const luma = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luma < 0.5 ? "dark" : "light";
 }
 
 function stripSheet(address: string): string {
@@ -170,6 +180,22 @@ export class ExcelBridge implements HostBridge {
     });
   }
 
+  async readSelectedRows(t: TableRef): Promise<number[]> {
+    return Excel.run(async (ctx) => {
+      const sel = ctx.workbook.getSelectedRange();
+      sel.load(["rowIndex", "rowCount"]);
+      sel.worksheet.load("name");
+      await ctx.sync();
+      if (sel.worksheet.name !== t.sheetName) return [];
+      // Sheet rows (0-based) t.row..t.row+t.rows-1 are data; t.row - 1 is the header.
+      const first = Math.max(sel.rowIndex, t.row);
+      const last = Math.min(sel.rowIndex + sel.rowCount - 1, t.row + t.rows - 1);
+      const rows: number[] = [];
+      for (let r = first; r <= last; r++) rows.push(r - t.row);
+      return rows;
+    });
+  }
+
   watchActiveCell(cb: (cell: ActiveCell) => void): () => void {
     let stopped = false;
     const handler = async () => {
@@ -192,6 +218,24 @@ export class ExcelBridge implements HostBridge {
     return () => {
       stopped = true;
       Office.context.document.removeHandlerAsync(Office.EventType.DocumentSelectionChanged, { handler });
+    };
+  }
+
+  theme(): HostTheme | null {
+    return officeTheme();
+  }
+
+  /** No dedicated event, so re-read when the pane regains focus (where a theme change is noticed). */
+  watchTheme(cb: (theme: HostTheme) => void): () => void {
+    const check = () => {
+      const t = officeTheme();
+      if (t) cb(t);
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
     };
   }
 

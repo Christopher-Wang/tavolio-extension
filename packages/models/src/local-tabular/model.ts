@@ -2,6 +2,7 @@ import { columnValues } from "@tavolio/table";
 import { isMissingValue } from "@tavolio/preprocessing";
 import type { Runtime } from "@tavolio/runtime";
 import type {
+  ValidationStrategy,
   FeatureSignal,
   PrepareContext,
   PredictionResult,
@@ -140,10 +141,13 @@ export class LocalTabularModel implements TavolioModel {
         ? perRow.map((r) => (ctx.task.type === "classification" ? (r.probs ?? ctx.task.classes.map(() => 0)) : []))
         : undefined;
 
-    const evaluation = evaluateHoldoutSplit(ctx, prepared, labeledIdx);
+    const validation = ctx.validation ?? { kind: "random" };
+    const evaluation = validation.kind === "none" ? undefined : evaluateHoldoutSplit(ctx, prepared, labeledIdx, validation);
     const featureSignals = rankSignals(ctx);
     const metrics: Record<string, number> = {};
-    if (evaluation.kind === "classification") {
+    if (!evaluation) {
+      // Scoring skipped on purpose: no metrics.
+    } else if (evaluation.kind === "classification") {
       metrics.accuracy = evaluation.accuracy ?? 0;
       metrics.baselineAccuracy = evaluation.baselineAccuracy ?? 0;
     } else {
@@ -156,6 +160,12 @@ export class LocalTabularModel implements TavolioModel {
     const warnings = [
       `local-tabular-v1 kNN (k=${k}) on ${trainX.length} labeled rows, ${prepared.featureNames.length} encoded features — until the ONNX artifact lands.`,
     ];
+    if (validation.kind === "selection") {
+      const chosen = new Set(validation.rows);
+      const held = labeledIdx.filter((i) => chosen.has(i)).length;
+      if (held === 0) warnings.push("None of the selected rows have a known target, so accuracy couldn't be measured.");
+      else if (held === labeledIdx.length) warnings.push("Every labeled row was selected, so there was nothing left to train on for the accuracy check.");
+    }
     if (!hasFeatures) warnings.push("No usable feature columns — predictions fall back to majority class / mean target.");
     if (blankIdx.length > 0) {
       warnings.push(`${blankIdx.length} row${blankIdx.length === 1 ? "" : "s"} with a blank target will get fresh predictions.`);
@@ -168,6 +178,7 @@ export class LocalTabularModel implements TavolioModel {
       confidences,
       newRowIndexes: blankIdx,
       evaluation,
+      validation: validation.kind,
       featureSignals,
       metrics,
       warnings,
@@ -215,17 +226,28 @@ function evaluateHoldoutSplit(
   ctx: PrepareContext,
   prepared: Prepared,
   labeledIdx: number[],
+  validation: Exclude<ValidationStrategy, { kind: "none" }>,
 ): NonNullable<PredictionResult["evaluation"]> {
   const targetValues = columnValues(ctx.table, ctx.target);
-  if (labeledIdx.length < 4) {
-    return ctx.task.type === "classification"
+  const empty = (): NonNullable<PredictionResult["evaluation"]> =>
+    ctx.task.type === "classification"
       ? { kind: "classification", accuracy: 0, baselineAccuracy: 0 }
       : { kind: "regression", mae: 0, rmse: 0, r2: 0, baselineMae: 0 };
+  let train: number[];
+  let test: number[];
+  if (validation.kind === "selection") {
+    const chosen = new Set(validation.rows);
+    test = labeledIdx.filter((i) => chosen.has(i));
+    train = labeledIdx.filter((i) => !chosen.has(i));
+    if (test.length === 0 || train.length === 0) return empty();
+  } else {
+    if (labeledIdx.length < 4) return empty();
+    const order = shuffled(labeledIdx, 42);
+    const fraction = Math.min(0.9, Math.max(0.05, validation.testFraction ?? 0.3));
+    const split = Math.min(order.length - 1, Math.max(1, Math.round(order.length * (1 - fraction))));
+    train = order.slice(0, split);
+    test = order.slice(split);
   }
-  const order = shuffled(labeledIdx, 42);
-  const split = Math.max(1, Math.floor(order.length * 0.7));
-  const train = order.slice(0, split);
-  const test = order.slice(split);
   const trainX = train.map((i) => prepared.matrix[i]!);
   const trainY = train.map((i) => targetValues[i]);
   const testX = test.map((i) => prepared.matrix[i]!);

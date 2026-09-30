@@ -1,6 +1,7 @@
+import { formatNumber } from "./numfmt.js";
 import { columnTopValues, isMissingValue, applySchema, inferSchema, profileColumns, type ColumnProfile } from "@tavolio/preprocessing";
 import { inferTask, isPredictError, predictTable, type PredictStage } from "@tavolio/prediction";
-import type { PredictionResult, Task } from "@tavolio/models";
+import type { PredictionResult, Task, ValidationStrategy } from "@tavolio/models";
 import { columnValues, fromValues, selectColumns, type ColumnSchema, type ColumnType, type Table } from "@tavolio/table";
 import type { PredictionColumn, SheetTable, TableRef, WritePlan } from "./host.js";
 
@@ -41,8 +42,7 @@ function median(sorted: number[]): number {
   return sorted.length % 2 ? sorted[m]! : (sorted[m - 1]! + sorted[m]!) / 2;
 }
 
-const fmt = (x: number) =>
-  Math.abs(x) >= 100 ? Math.round(x).toLocaleString("en-US") : x.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const fmt = formatNumber;
 
 /** The lightweight per-column facts shown when a column is opened in Data. */
 export function columnStats(a: Analysis, name: string): ColumnStats {
@@ -117,11 +117,30 @@ export type TargetPreview =
       task: Task;
       /** Top classes with counts (classification only). */
       classes: Array<{ value: string; count: number }>;
+      /** Regression only: counts per equal-width bin of the known values. */
+      histogram: { bins: number[]; min: number; max: number } | null;
       labeled: number;
       blank: number;
       features: number;
     }
   | { ok: false; title: string; detail: string; counts?: Array<{ value: string; count: number }> };
+
+const HISTOGRAM_BINS = 14;
+
+function histogramOf(values: unknown[]): { bins: number[]; min: number; max: number } | null {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (nums.length === 0) return null;
+  let min = nums[0]!;
+  let max = nums[0]!;
+  for (const n of nums) {
+    if (n < min) min = n;
+    if (n > max) max = n;
+  }
+  const bins = new Array<number>(HISTOGRAM_BINS).fill(0);
+  const width = (max - min) / HISTOGRAM_BINS || 1;
+  for (const n of nums) bins[Math.min(HISTOGRAM_BINS - 1, Math.floor((n - min) / width))]!++;
+  return { bins, min, max };
+}
 
 /** Same task inference the engine uses, run before Predict so problems show up immediately. */
 export function previewTarget(a: Analysis, target: string, excluded: ReadonlySet<string>): TargetPreview {
@@ -132,7 +151,8 @@ export function previewTarget(a: Analysis, target: string, excluded: ReadonlySet
   try {
     const task = inferTask(a.schema, target, values);
     const classes = task.type === "classification" ? columnTopValues(a.table, target).slice(0, 4) : [];
-    return { ok: true, task, classes, labeled: values.length - blank, blank, features };
+    const histogram = task.type === "regression" ? histogramOf(values) : null;
+    return { ok: true, task, classes, histogram, labeled: values.length - blank, blank, features };
   } catch (e) {
     if (isPredictError(e)) return { ok: false, title: e.title, detail: e.detail, counts: e.counts };
     return { ok: false, title: "This column can't be predicted yet", detail: String(e) };
@@ -143,10 +163,11 @@ export function runPrediction(
   a: Analysis,
   target: string,
   excluded: ReadonlySet<string>,
+  validation: ValidationStrategy,
   onProgress: (stage: PredictStage) => void | Promise<void>,
 ): Promise<PredictionResult> {
   const names = a.table.columns.map((c) => c.name).filter((n) => n === target || !excluded.has(n));
-  return predictTable({ table: selectColumns(a.table, names), target, typeOverrides: a.typeOverrides, onProgress });
+  return predictTable({ table: selectColumns(a.table, names), target, typeOverrides: a.typeOverrides, validation, onProgress });
 }
 
 export type Destination = "new-columns" | "new-sheet" | "fill-blanks";

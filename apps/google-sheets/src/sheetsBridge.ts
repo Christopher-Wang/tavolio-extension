@@ -57,6 +57,10 @@ export class SheetsBridge implements HostBridge {
     return this.call("tavolioSelectColumn", table, offset);
   }
 
+  readSelectedRows(table: TableRef): Promise<number[]> {
+    return this.call<number[]>("tavolioSelectedRows", table);
+  }
+
   watchActiveCell(cb: (cell: ActiveCell) => void): () => void {
     let stopped = false;
     let last: string | null = null;

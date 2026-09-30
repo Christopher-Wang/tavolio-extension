@@ -12,12 +12,13 @@ import {
   type Destination,
   type PredictStage,
 } from "./analysis.js";
-import { HostError, NO_TABLE_MESSAGE, type HostBridge } from "./host.js";
+import { HostError, NO_TABLE_MESSAGE, type HostBridge, type HostTheme } from "./host.js";
 import { css } from "./styles.js";
 import { Icon, Logo } from "./components.js";
 import type { ColumnType } from "@tavolio/table";
 import { Data, type TypeChoice } from "./screens/Data.js";
 import { Counts, Predict } from "./screens/Predict.js";
+import { DEFAULT_VALIDATION, formatRowSpec, validationStrategy, type ValidationChoice } from "./validation.js";
 import { Running } from "./screens/Running.js";
 import { Results } from "./screens/Results.js";
 
@@ -30,8 +31,11 @@ type Boot = { name: "loading" } | { name: "empty"; message: string } | { name: "
 
 export interface TavolioAppProps {
   host: HostBridge;
-  /** Sheets has no dark mode, so it pins "light"; hosts that follow the OS use "auto". */
-  theme?: "light" | "auto";
+  /**
+   * Sheets has no dark mode, so it pins "light"; the browser playground follows the OS with "auto".
+   * A theme reported by the host itself (Excel) takes precedence.
+   */
+  theme?: "light" | "dark" | "auto";
 }
 
 const MIN_RUNNING_MS = 700;
@@ -45,7 +49,10 @@ function nextPaint(): Promise<void> {
   });
 }
 
-export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
+export function TavolioApp({ host, theme: fallbackTheme = "light" }: TavolioAppProps) {
+  const [hostTheme, setHostTheme] = useState<HostTheme | null>(() => host.theme?.() ?? null);
+  useEffect(() => host.watchTheme?.(setHostTheme), [host]);
+  const theme = hostTheme ?? fallbackTheme;
   const [boot, setBoot] = useState<Boot>({ name: "loading" });
   const [tab, setTab] = useState<Tab>("predict");
   const [run, setRun] = useState<Run>({ name: "idle" });
@@ -60,6 +67,9 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
   const [written, setWritten] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
+  const [validation, setValidation] = useState<ValidationChoice>(DEFAULT_VALIDATION);
+  const validationRef = useRef(validation);
+  validationRef.current = validation;
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   /** Set when the user clicks outside the analyzed table while they have work in the pane. */
   const [pending, setPending] = useState<string | null>(null);
@@ -75,6 +85,7 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
       setOverrides({});
       setOpenCol(null);
       setTarget(defaultTarget(a));
+      setValidation(DEFAULT_VALIDATION);
       setResult(null);
       setRun({ name: "idle" });
       setTab("predict");
@@ -116,7 +127,8 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
       const name = [...a.offsets].find(([, o]) => o === offset)?.[0];
       if (!name) return;
       if (tab === "data") setOpenCol(name);
-      else if (tab === "predict" && name !== targetRef.current) {
+      // Selecting rows to hold out also fires cell events; don't let them change the target.
+      else if (tab === "predict" && name !== targetRef.current && validationRef.current.mode !== "selection") {
         setTarget(name);
         setFlashKey((k) => k + 1);
       }
@@ -151,12 +163,20 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
     setResult(null);
   }
 
+  async function readSelection() {
+    if (!analysis) return;
+    const rows = await host.readSelectedRows(analysis.ref).catch(() => []);
+    setValidation((v) => ({ ...v, cells: formatRowSpec(rows, analysis.ref) }));
+    setResult(null);
+  }
+
   async function predict() {
-    if (!analysis || !preview?.ok) return;
+    const strategy = analysis ? validationStrategy(validation, analysis.ref) : null;
+    if (!analysis || !preview?.ok || !strategy) return;
     const started = performance.now();
     setRun({ name: "running", stage: "preparing" });
     try {
-      const res = await runPrediction(analysis, target, excluded, async (stage) => {
+      const res = await runPrediction(analysis, target, excluded, strategy, async (stage) => {
         setRun({ name: "running", stage });
         await nextPaint();
       });
@@ -272,11 +292,16 @@ export function TavolioApp({ host, theme = "light" }: TavolioAppProps) {
           setTarget(t);
           setRun({ name: "idle" });
         }}
-        onViewFeatures={() => setTab("data")}
+        validation={validation}
+        onValidation={(v) => {
+          setValidation(v);
+          setRun({ name: "idle" });
+        }}
+        onReadSelection={() => void readSelection()}
       />
     );
     footer = (
-      <button className="tv-btn tv-btn-primary tv-btn-block" disabled={!preview?.ok} onClick={() => void predict()}>
+      <button className="tv-btn tv-btn-primary tv-btn-block" disabled={!preview?.ok || !analysis || !validationStrategy(validation, analysis.ref)} onClick={() => void predict()}>
         Predict {target}
       </button>
     );

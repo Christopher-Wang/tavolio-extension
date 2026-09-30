@@ -30,23 +30,28 @@ export function Results({ analysis, result, destination, onDestination, written,
   const blank = result.newRowIndexes ?? [];
   const ev = result.evaluation;
   const predictedRows = blank.length > 0 ? blank : result.predictions.map((_, i) => i);
-  const previewRows = (blank.length > 0 ? blank : result.predictions.map((_, i) => i)).slice(0, 5);
 
   return (
     <div className="tv-screen">
       <h1>{target} prediction</h1>
       <p className="tv-sub">{isClass ? "Classification" : "Regression"} · {plural(result.predictions.length, "row")}</p>
 
-      <div className="tv-card">
-        <div className="tv-card-title">Prediction quality</div>
-        {ev && isClass && ev.accuracy !== undefined ? (
-          <ClassQuality analysis={analysis} target={target} accuracy={ev.accuracy} baseline={ev.baselineAccuracy ?? 0} />
-        ) : ev && !isClass && ev.mae !== undefined ? (
-          <RegressionQuality mae={ev.mae} baseline={ev.baselineMae ?? 0} />
-        ) : (
-          <p className="tv-small">There aren't enough rows with a known {target} to measure accuracy yet.</p>
-        )}
-      </div>
+      {result.validation !== "none" && (
+        <div className="tv-card">
+          <div className="tv-card-title">Prediction quality</div>
+          {ev && isClass && ev.accuracy !== undefined ? (
+            <ClassQuality analysis={analysis} target={target} accuracy={ev.accuracy} baseline={ev.baselineAccuracy ?? 0} />
+          ) : ev && !isClass && ev.mae !== undefined ? (
+            <RegressionQuality mae={ev.mae} baseline={ev.baselineMae ?? 0} />
+          ) : result.validation === "selection" ? (
+            <p className="tv-small">
+              Couldn't measure accuracy: the selected rows need a known {target}, and some other rows must be left to learn from.
+            </p>
+          ) : (
+            <p className="tv-small">There aren't enough rows with a known {target} to measure accuracy yet.</p>
+          )}
+        </div>
+      )}
 
       <h2>Predictions</h2>
       <PredictionSummary result={result} rows={[...predictedRows]} />
@@ -102,22 +107,6 @@ export function Results({ analysis, result, destination, onDestination, written,
         <Callout tone="danger">{writeError}</Callout>
       ) : null}
 
-      <Details summary="Preview">
-        <table className="tv-preview">
-          <tbody>
-            {previewRows.map((i) => (
-              <tr key={i}>
-                <td className="tv-small">Row {analysis.ref.row + 1 + i}</td>
-                <td>
-                  <b>{typeof result.predictions[i] === "number" ? num(result.predictions[i] as number) : String(result.predictions[i])}</b>
-                </td>
-                <td>{isClass && result.confidences?.[i] !== undefined ? pct(result.confidences[i]!) : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Details>
-
       {result.metrics && Object.keys(result.metrics).length > 0 && (
         <Details summary="Advanced metrics">
           <table className="tv-metrics">
@@ -128,12 +117,6 @@ export function Results({ analysis, result, destination, onDestination, written,
                   <td>{k.toLowerCase().includes("accuracy") ? pct(v) : num(v)}</td>
                 </tr>
               ))}
-              {result.model && (
-                <tr>
-                  <td>Model</td>
-                  <td>{result.model.displayName}</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </Details>

@@ -1,4 +1,4 @@
-import { modelRegistry, type PredictionResult } from "@tavolio/models";
+import { modelRegistry, type PredictionResult, type ValidationStrategy } from "@tavolio/models";
 import { LocalTabularModel } from "@tavolio/models";
 import { columnValues, type ColumnType, type Table } from "@tavolio/table";
 import { applySchema, inferSchema } from "@tavolio/preprocessing";
@@ -12,6 +12,8 @@ export interface PredictTableRequest {
   modelId?: string;
   /** Column types the user corrected; these win over inference. */
   typeOverrides?: Record<string, ColumnType>;
+  /** How quality is scored; random 70/30 when omitted. */
+  validation?: ValidationStrategy;
   /** Called as each stage starts; awaited so a UI can paint between stages. */
   onProgress?: (stage: PredictStage) => void | Promise<void>;
 }
@@ -38,6 +40,7 @@ export async function predictTable({
   target,
   modelId = "local-tabular-v1",
   typeOverrides,
+  validation,
   onProgress,
 }: PredictTableRequest): Promise<PredictionResult> {
   ensureDefaultModel();
@@ -60,6 +63,7 @@ export async function predictTable({
     schema: withSchema.columns,
     target,
     task,
+    validation,
   });
   await onProgress?.("predicting");
   const outputs = await model.run(prepared);
@@ -69,6 +73,7 @@ export async function predictTable({
     schema: withSchema.columns,
     target,
     task,
+    validation,
   });
   return { ...result, model: { id: model.manifest.id, displayName: model.manifest.displayName } };
 }

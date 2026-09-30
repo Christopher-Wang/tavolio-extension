@@ -20,6 +20,17 @@ export interface FeatureSignal {
   strength: number;
 }
 
+/**
+ * How prediction quality is scored.
+ *  - random: hold out a random share (30% by default) of the labeled rows.
+ *  - selection: hold out exactly `rows` (0-based data-row indexes, e.g. rows the user selected).
+ *  - none: skip scoring; every labeled row is used for prediction.
+ */
+export type ValidationStrategy =
+  | { kind: "random"; /** Share held out, 0-1; 0.3 when absent. */ testFraction?: number }
+  | { kind: "selection"; rows: number[] }
+  | { kind: "none" };
+
 export interface PredictionResult {
   task: Task;
   target: string;
@@ -39,6 +50,8 @@ export interface PredictionResult {
     r2?: number;
     baselineMae?: number;
   };
+  /** The strategy that produced `evaluation` (absent evaluation + "none" = scoring skipped on purpose). */
+  validation?: ValidationStrategy["kind"];
   featureSignals?: FeatureSignal[];
   metrics?: Record<string, number>;
   /** Which model produced this result (set by predictTable). */
@@ -51,6 +64,8 @@ export interface PrepareContext {
   schema: ColumnSchema[];
   target: string;
   task: Task;
+  /** Defaults to random when absent. */
+  validation?: ValidationStrategy;
 }
 
 export interface TavolioModel {
