@@ -24,7 +24,9 @@ services:
       target: base
     command: npm run typecheck --workspaces --if-present
 
-  # Dev sidebar (bind-mounted source, sample data at http://localhost:5173).
+  # Dev server with hot reload: https://localhost:3000 (HTTPS when .docker/certs exists;
+  # see docker/gen-certs.sh). Serves the mock spreadsheet in a browser, and the real
+  # UI to Excel (manifest.local.xml) and Sheets ("Open Tavolio (local https)").
   # Requires the one-time install + build via `base` first (see above).
   app:
     build:
@@ -34,6 +36,5 @@ services:
       - .:/repo
     working_dir: /repo
     ports:
-      - "5173:5173"
-    command: npm run dev --workspace=google-sheets -- --host 0.0.0.0 --port 5173
-
+      - "3000:3000"
+    command: npm run dev --workspace=google-sheets -- --host 0.0.0.0 --port 3000

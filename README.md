@@ -29,7 +29,7 @@ tests/                 fixtures (churn/housing/messy) + integration pipeline tes
 # install deps
 docker compose run --rm base npm install
 
-# build all packages + tests + sidebar
+# build all packages + the UI (apps/google-sheets/dist)
 docker compose run --rm base npm run build
 
 # typecheck everything
@@ -38,18 +38,45 @@ docker compose run --rm typecheck
 # run integration tests (churn/housing/messy fixtures)
 docker compose run --rm test
 
-# playground: mock spreadsheet + real sidebar (http://localhost:5173)
+# playground: mock spreadsheet + real sidebar (https://localhost:3000, see below)
 docker compose up app
 ```
 
-## Install in Google Sheets
+## Run locally over HTTPS (Excel + Sheets)
 
-`npm run build` writes everything Apps Script needs to
-`apps/google-sheets/dist/appsscript/`. In a sheet, open **Extensions → Apps
-Script** and create one file per bundle file (HTML file names without
-`.html`): `Code.gs`, `Sidebar`, `GpuProbe`, plus `appsscript.json` (enable
-"Show appsscript.json" in Project Settings). No deploy needed: run `onOpen`
-once, or reload the sheet, then use **Tavolio → Open Tavolio**.
+Excel task panes and the Sheets iframe both need HTTPS. `make dev` serves the UI
+(hot reload) at `https://localhost:3000`; UI changes never need re-installing.
+
+```sh
+make certs     # one-time: local CA + localhost cert -> .docker/certs (gitignored)
+make install   # one-time
+make dev       # https://localhost:3000
+```
+
+Trust `.docker/certs/rootCA.pem` once, or the browser refuses the page:
+
+- macOS/Chrome/Safari: open the file, add to Keychain (System), set "Always Trust".
+- Firefox: Settings -> Privacy & Security -> View Certificates -> Authorities ->
+  Import, tick "Trust this CA to identify websites". (Or set
+  `security.enterprise_roots.enabled` to true in about:config to use the Keychain.)
+
+Opening `https://localhost:3000` in a plain tab shows the mock spreadsheet.
+
+### Excel (web)
+
+Insert -> Add-ins -> Manage My Add-ins -> Upload My Add-in ->
+`apps/excel/manifest.local.xml` (dev server) or `apps/excel/manifest.xml` (GitHub Pages).
+Re-upload only if the manifest itself changes.
+
+### Google Sheets
+
+Extensions -> Apps Script. Paste the three files from `apps/google-sheets/appsscript/`
+(`Code.gs`, `Shell.html`, `appsscript.json`), reload the sheet, then use
+**Tavolio -> Open Tavolio (local https)** or **(hosted)**. The sidebar is an iframe of the
+UI URL, so only edits to those three files ever need re-pasting: `Code.gs` (sheet
+read/write functions), `Shell.html` (message relay + iframe `allow`), `appsscript.json` (scopes).
+**Device check (local https)** runs `public/probe.html` inside that iframe (WebGPU / workers /
+isolation / storage / fetch).
 
 ## Hosts
 

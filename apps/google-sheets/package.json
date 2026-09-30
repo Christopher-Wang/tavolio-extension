@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit && vite build && node scripts/bundle-appsscript.mjs",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "preview": "vite preview",
     "clean": "rm -rf dist dev-dist"
   },
@@ -21,7 +21,6 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.6.3",
-    "vite": "^6.0.0",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite": "^6.0.0"
   }
 }

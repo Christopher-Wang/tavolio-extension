@@ -14,10 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test --workspace=tests-integration --if-present",
-    "dev:sheets": "npm run dev --workspace=google-sheets --if-present",
-    "docker:build": "docker build -t tavolio .",
-    "docker:test": "docker compose run --rm test",
-    "docker:dev": "docker compose up app"
+    "dev:sheets": "npm run dev --workspace=google-sheets --if-present"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

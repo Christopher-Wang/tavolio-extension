@@ -1,6 +1,6 @@
 name: Deploy UI to GitHub Pages
 
-# The single-file UI build is served from Pages. The Excel task pane loads it
+# The UI build is served from Pages. The Excel task pane loads it
 # directly (apps/excel/manifest.xml); the Sheets sidebar can embed it in an iframe.
 on:
   push:
@@ -30,8 +30,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp apps/google-sheets/dist/appsscript/Sidebar.html _site/index.html
-          if [ -d apps/excel/assets ]; then cp -r apps/excel/assets _site/assets; fi
+          cp -r apps/google-sheets/dist/. _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -8,11 +8,11 @@
     </style>
   </head>
   <body>
-    <iframe id="app" src="<?= url ?>"></iframe>
+    <iframe id="app" src="<?= url ?>" allow="webgpu; cross-origin-isolated; clipboard-write"></iframe>
     <script>
       // Relay between the hosted Tavolio UI (iframe) and the spreadsheet (google.script.run).
       var APP_ORIGIN = <?!= JSON.stringify(origin) ?>;
-      var ALLOWED = ["tavolioReadTable", "tavolioActiveCell", "tavolioSelectColumn", "tavolioWrite"];
+      var ALLOWED = ["tavolioReadTable", "tavolioActiveCell", "tavolioSelectColumn", "tavolioSelectedRows", "tavolioWrite"];
       var frame = document.getElementById("app");
       window.addEventListener("message", function (e) {
         if (e.source !== frame.contentWindow || e.origin !== APP_ORIGIN) return;

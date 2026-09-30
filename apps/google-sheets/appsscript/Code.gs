@@ -6,10 +6,10 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Tavolio")
-    .addItem("Open Tavolio", "showSidebar")
-    .addItem("Open Tavolio (hosted, beta)", "showHostedSidebar")
+    .addItem("Open Tavolio (hosted)", "showHostedSidebar")
+    .addItem("Open Tavolio (local https)", "showLocalSidebar")
     .addSeparator()
-    .addItem("Device check", "showGpuProbe")
+    .addItem("Device check (local https)", "showLocalProbe")
     .addToUi();
 }
 
@@ -17,27 +17,31 @@ function onInstall(e) {
   onOpen(e);
 }
 
-function showSidebar() {
-  // Sidebar.html is the single-file build: `npm run build` -> dist/appsscript/Sidebar.html
-  const html = HtmlService.createHtmlOutputFromFile("Sidebar").setTitle("Tavolio");
-  SpreadsheetApp.getUi().showSidebar(html);
-}
-
 // The hosted build (GitHub Pages) is the same UI Excel loads. It runs in an iframe here and
 // reaches the sheet through Shell.html's postMessage relay.
 const TAVOLIO_HOSTED_URL = "https://christopher-wang.github.io/tavolio/";
 
+const TAVOLIO_LOCAL_URL = "https://localhost:3000/";
+
 function showHostedSidebar() {
-  const t = HtmlService.createTemplateFromFile("Shell");
-  t.url = TAVOLIO_HOSTED_URL + "?host=sheets";
-  t.origin = TAVOLIO_HOSTED_URL.replace(/^(https:\/\/[^\/]+).*$/, "$1");
-  SpreadsheetApp.getUi().showSidebar(t.evaluate().setTitle("Tavolio"));
+  showShell_(TAVOLIO_HOSTED_URL);
 }
 
-/** Diagnostics: can this sidebar iframe run WebGPU / wasm / workers / fetch models? */
-function showGpuProbe() {
-  const html = HtmlService.createHtmlOutputFromFile("GpuProbe").setTitle("Tavolio device check");
-  SpreadsheetApp.getUi().showSidebar(html);
+/** Same UI served by `make dev` on this machine. */
+function showLocalSidebar() {
+  showShell_(TAVOLIO_LOCAL_URL);
+}
+
+/** Same probe, but inside the Shell iframe like the real UI (served from public/probe.html). */
+function showLocalProbe() {
+  showShell_(TAVOLIO_LOCAL_URL, "probe.html");
+}
+
+function showShell_(baseUrl, path) {
+  const t = HtmlService.createTemplateFromFile("Shell");
+  t.url = path ? baseUrl + path : baseUrl + "?host=sheets";
+  t.origin = baseUrl.replace(/^(https:\/\/[^\/]+).*$/, "$1");
+  SpreadsheetApp.getUi().showSidebar(t.evaluate().setTitle("Tavolio"));
 }
 
 // ---- HostBridge: read ------------------------------------------------------
@@ -87,6 +91,23 @@ function tavolioActiveCell() {
   const cell = SpreadsheetApp.getCurrentCell();
   if (!cell) return null;
   return { sheetName: cell.getSheet().getName(), column: cell.getColumn() };
+}
+
+/** 0-based data-row indexes of the table covered by the current selection (all ranges, header excluded). */
+function tavolioSelectedRows(table) {
+  if (SpreadsheetApp.getActiveSheet().getName() !== table.sheetName) return [];
+  const list = SpreadsheetApp.getActiveRangeList();
+  if (!list) return [];
+  const seen = {};
+  const rows = [];
+  list.getRanges().forEach(function (range) {
+    const first = Math.max(range.getRow(), table.row + 1);
+    const last = Math.min(range.getLastRow(), table.row + table.rows);
+    for (let r = first; r <= last; r++) {
+      if (!seen[r]) { seen[r] = true; rows.push(r - table.row - 1); }
+    }
+  });
+  return rows.sort(function (a, b) { return a - b; });
 }
 
 /** Highlight one table column (header + data). */
