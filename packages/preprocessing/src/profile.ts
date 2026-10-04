@@ -3,6 +3,7 @@ import { columnValues } from "@tavolio/table";
 import { inferNullable, isMissingValue, missingRate, nonMissing } from "./missingValues.js";
 import { inferColumnType } from "./inferColumnType.js";
 import { categoricalStats } from "./categorical.js";
+import { exemptFromIdentifierRule } from "./identifier.js";
 
 export type ColumnRole = "feature" | "ignore";
 
@@ -49,7 +50,7 @@ export function profileColumns(table: Table, schema: ColumnSchema[]): ColumnProf
     const uniqueRate = observed.length === 0 ? 0 : uniqueCount / observed.length;
     const mRate = missingRate(values);
     const examples = examplesOf(values);
-    const decision = decideRole(col, { uniqueCount, uniqueRate, missingRate: mRate, n });
+    const decision = decideRole(col, { uniqueCount, uniqueRate, missingRate: mRate, n, exempt: exemptFromIdentifierRule(col.type, observed) });
     return {
       name: col.name,
       type: col.type,
@@ -67,10 +68,10 @@ export function profileColumns(table: Table, schema: ColumnSchema[]): ColumnProf
 
 function decideRole(
   col: ColumnSchema,
-  stats: { uniqueCount: number; uniqueRate: number; missingRate: number; n: number },
+  stats: { uniqueCount: number; uniqueRate: number; missingRate: number; n: number; exempt: boolean },
 ): { role: ColumnRole; reason: string } {
-  // Unique-per-row values are identifiers, not learnable patterns (§13).
-  if (stats.n > 0 && stats.uniqueCount === stats.n && stats.n >= 3) {
+  // Unique-per-row values are identifiers, not learnable patterns (§13), except dates and continuous numbers.
+  if (stats.n > 0 && stats.uniqueCount === stats.n && stats.n >= 3 && !stats.exempt) {
     return { role: "ignore", reason: "Looks like an identifier — every value is unique, so it won't be used." };
   }
   if (col.type === "text") {
@@ -82,17 +83,11 @@ function decideRole(
   if (col.type === "datetime") {
     return { role: "feature", reason: "Recognized as a date." };
   }
-  if (stats.missingRate > 0 && stats.missingRate < 0.6) {
-    return {
-      role: "feature",
-      reason: `${(stats.missingRate * 100).toFixed(stats.missingRate < 0.1 ? 1 : 0)}% missing values — Tavolio will handle them.`,
-    };
-  }
   return { role: "feature", reason: "Ready to use." };
 }
 
 /** Top values for the column-detail view (§2). */
-export function columnTopValues(table: Table, name: string): Array<{ value: string; count: number }> {
+export function columnTopValues(table: Table, name: string): ReturnType<typeof categoricalStats>["topValues"] {
   return categoricalStats(columnValues(table, name)).topValues;
 }
 

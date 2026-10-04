@@ -10,12 +10,29 @@ const https = existsSync(`${certs}localhost.pem`)
   ? { key: readFileSync(`${certs}localhost-key.pem`), cert: readFileSync(`${certs}localhost.pem`) }
   : undefined;
 
-// Normal multi-file build (Pages, and the localhost server Sheets/Excel iframe). base "./" so it works under
-// the Pages sub-path. Nothing is inlined, so ORT wasm/worker/model files can sit next to the bundle.
+// Normal multi-file build, served from localhost by `make serve` (Sheets sidebar and Excel task pane). base "./" keeps
+// asset URLs relative so the build works from any origin or sub-path. Nothing is inlined, so ORT wasm/worker/model
+// files can sit next to the bundle.
 export default defineConfig({
   plugins: [react()],
   base: "./",
-  build: { outDir: "dist", emptyOutDir: true },
-  server: { host: "0.0.0.0", port: 3000, strictPort: true, https },
-  preview: { host: "0.0.0.0", port: 3000, https },
+  // Stable entry name: appsscript/Loader.html loads assets/app.js directly into the Sheets sidebar.
+  build: { outDir: "dist", emptyOutDir: true, rollupOptions: { output: { entryFileNames: "assets/app.js" } } },
+  // The Sheets sidebar can load scripts from here directly, so allow any origin (Vite 6 defaults to
+  // localhost-only CORS) and answer Chrome's Private Network Access preflight. Firefox ignores the latter.
+  server: {
+    host: "0.0.0.0",
+    port: 3000,
+    strictPort: true,
+    https,
+    cors: true,
+    headers: { "Access-Control-Allow-Private-Network": "true" },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 3000,
+    https,
+    cors: true,
+    headers: { "Access-Control-Allow-Private-Network": "true" },
+  },
 });

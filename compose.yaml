@@ -24,9 +24,24 @@ services:
       target: base
     command: npm run typecheck --workspaces --if-present
 
+  # Real-model tests (TabPFN ONNX through onnxruntime-node); `make test-model`. Debian because onnxruntime-node has no musl
+  # build. Needs the model built under tools/tabpfn-export/out (see its README); without it the tests skip themselves.
+  ort-test:
+    build: docker/ort-node
+    volumes:
+      - .:/repo
+      - ./tools/tabpfn-export/out:/model:ro
+    working_dir: /repo/tests/integration
+    environment:
+      TAVOLIO_MODEL: /model/tabpfn_fast_client.onnx
+      TAVOLIO_PARITY: /model/model-parity.json
+      TAVOLIO_REG_MODEL: /model/tabpfn_fast_reg_client_f32.onnx
+      TAVOLIO_REG_PARITY: /model/model-parity-reg.json
+    command: node --test dist/tabpfn-model.test.js dist/tabpfn-regression-model.test.js
+
   # Dev server with hot reload: https://localhost:3000 (HTTPS when .docker/certs exists;
   # see docker/gen-certs.sh). Serves the mock spreadsheet in a browser, and the real
-  # UI to Excel (manifest.local.xml) and Sheets ("Open Tavolio (local https)").
+  # UI to Excel (manifest.local.xml). Sheets uses `serve` below instead.
   # Requires the one-time install + build via `base` first (see above).
   app:
     build:
@@ -38,3 +53,16 @@ services:
     ports:
       - "3000:3000"
     command: npm run dev --workspace=google-sheets -- --host 0.0.0.0 --port 3000
+
+  # Watched production build served at https://localhost:3000 for the direct Sheets sidebar
+  # (appsscript/Loader.html loads assets/app.js). `make serve`. Same port as `app`: run one at a time.
+  serve:
+    build:
+      context: .
+      target: base
+    volumes:
+      - .:/repo
+    working_dir: /repo
+    ports:
+      - "3000:3000"
+    command: sh -c "node docker/serve-dist.mjs & npx --workspace=google-sheets vite build --watch"

@@ -5,7 +5,7 @@ DOCKER ?= docker
 CERTS  := .docker/certs
 
 .DEFAULT_GOAL := help
-.PHONY: help install build typecheck test devcerts clean-dist down
+.PHONY: help install build typecheck test test-model certs dev serve clean-dist down
 
 help: ## List commands
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -22,6 +22,9 @@ typecheck: ## Typecheck every workspace
 test: ## Run the integration tests
 	$(DC) run --rm test
 
+test-model: build ## Real-model tests: TabPFN ONNX via onnxruntime-node (needs tools/tabpfn-export/out)
+	$(DC) run --rm ort-test
+
 certs: ## One-time: local CA + localhost cert in .docker/certs (then trust rootCA.pem)
 	@mkdir -p $(CERTS)
 	$(DOCKER) run --rm -v "$(CURDIR)/$(CERTS)":/certs -v "$(CURDIR)/docker/gen-certs.sh":/gen.sh:ro \
@@ -29,6 +32,9 @@ certs: ## One-time: local CA + localhost cert in .docker/certs (then trust rootC
 
 dev: ## Dev server with hot reload: https://localhost:3000 (mock sheet + real UI)
 	$(DC) up app
+
+serve: ## Watched build served at https://localhost:3000 for the direct Sheets sidebar (no hot reload)
+	$(DC) up serve
 
 clean-dist: ## Remove build output
 	$(DC) run --rm base npm run clean --workspace=google-sheets

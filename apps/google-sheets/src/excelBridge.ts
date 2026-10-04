@@ -74,6 +74,9 @@ async function getSheet(ctx: Excel.RequestContext, name: string): Promise<Excel.
   return sheet;
 }
 
+/** Tavolio green (the pane's accent): forecasted values are written in it so they stand out from the user's data. */
+const FORECAST_COLOR = "#0b7a5c";
+
 function writeColumn(sheet: Excel.Worksheet, headerRow: number, column: number, col: PredictionColumn): void {
   const head = sheet.getRangeByIndexes(headerRow - 1, column - 1, 1, 1);
   head.values = [[col.header]];
@@ -84,6 +87,7 @@ function writeColumn(sheet: Excel.Worksheet, headerRow: number, column: number, 
   const format = col.format === "percent" ? "0%" : "General";
   body.numberFormat = col.values.map(() => [format]);
   body.values = col.values.map((v) => [v === null ? "" : asLiteral(v)]);
+  body.format.font.color = FORECAST_COLOR;
 }
 
 interface NoteJob {
@@ -202,10 +206,10 @@ export class ExcelBridge implements HostBridge {
       try {
         const cell = await Excel.run(async (ctx) => {
           const c = ctx.workbook.getSelectedRange().getCell(0, 0);
-          c.load("columnIndex");
+          c.load("columnIndex,rowIndex");
           c.worksheet.load("name");
           await ctx.sync();
-          return { sheetName: c.worksheet.name, column: c.columnIndex + 1 };
+          return { sheetName: c.worksheet.name, column: c.columnIndex + 1, row: c.rowIndex + 1 };
         });
         if (stopped) return;
         if (this.own && this.own.key === `${cell.sheetName}:${cell.column}` && Date.now() < this.own.until) return;
@@ -325,11 +329,14 @@ export class ExcelBridge implements HostBridge {
       range.load("formulas");
       await ctx.sync();
       const formulas = range.formulas;
+      const filled: boolean[] = [];
       let first = -1;
       let last = -1;
       for (let i = 0; i < t.rows; i++) {
         const v = plan.values[i];
+        filled.push(false);
         if (v === null || v === undefined || formulas[i]![0] !== "") continue;
+        filled[i] = true;
         formulas[i]![0] = asLiteral(v);
         const note = plan.notes[i];
         if (note) notes.push({ sheetName: t.sheetName, address: `${columnLetter(col)}${t.row + 1 + i}`, text: note });
@@ -340,6 +347,14 @@ export class ExcelBridge implements HostBridge {
       // Write back only the changed span; cells inside it that hold formulas keep them.
       const out = sheet.getRangeByIndexes(t.row + first, col - 1, last - first + 1, 1);
       out.formulas = formulas.slice(first, last + 1);
+      // Colour only the cells we filled, not the user's own cells inside the span.
+      for (let i = first; i <= last; i++) {
+        if (!filled[i]) continue;
+        let j = i;
+        while (j + 1 <= last && filled[j + 1]) j++;
+        sheet.getRangeByIndexes(t.row + i, col - 1, j - i + 1, 1).format.font.color = FORECAST_COLOR;
+        i = j;
+      }
       out.load("address");
       await ctx.sync();
       return { sheetName: t.sheetName, address: stripSheet(out.address) };

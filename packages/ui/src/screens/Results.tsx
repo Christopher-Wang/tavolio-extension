@@ -1,17 +1,17 @@
-import { columnTopValues } from "@tavolio/preprocessing";
-import type { PredictionResult } from "@tavolio/models";
-import type { Analysis, Destination } from "../analysis.js";
+import { useState } from "react";
+import type { FeatureSignal, PredictionResult } from "@tavolio/models";
+import type { Analysis } from "../analysis.js";
 import { Bar, Callout, Details, Icon, compact, num, pct, plural } from "../components.js";
+import { points, Waterfall } from "./Waterfall.js";
 
 export interface ResultsProps {
   analysis: Analysis;
   result: PredictionResult;
-  destination: Destination;
-  onDestination: (d: Destination) => void;
-  /** Address written to, once the user has added predictions. */
-  written: string | null;
-  writeError: string | null;
   features: number;
+  /** A row clicked in the sheet; the "Why" card follows it. */
+  focusRow?: { row: number; n: number } | null;
+  /** The model that made the predictions; labels its bar in the quality comparison. */
+  modelName: string;
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -23,8 +23,8 @@ const METRIC_LABELS: Record<string, string> = {
   baselineMae: "Baseline MAE",
 };
 
-/** §6–§9: answer "is this useful?" first, then make adding predictions the payoff. */
-export function Results({ analysis, result, destination, onDestination, written, writeError, features }: ResultsProps) {
+/** §6–§9: answer "is this useful?" Adding predictions to the sheet lives on the finished Running screen. */
+export function Results({ analysis, result, features, focusRow = null, modelName }: ResultsProps) {
   const target = result.target;
   const isClass = result.task.type === "classification";
   const blank = result.newRowIndexes ?? [];
@@ -35,14 +35,14 @@ export function Results({ analysis, result, destination, onDestination, written,
     <div className="tv-screen">
       <h1>{target} prediction</h1>
       <p className="tv-sub">{isClass ? "Classification" : "Regression"} · {plural(result.predictions.length, "row")}</p>
+      {result.notice && <Callout tone="warn">{result.notice}</Callout>}
 
       {result.validation !== "none" && (
-        <div className="tv-card">
-          <div className="tv-card-title">Prediction quality</div>
+        <div style={{ marginTop: 14 }}>
           {ev && isClass && ev.accuracy !== undefined ? (
-            <ClassQuality analysis={analysis} target={target} accuracy={ev.accuracy} baseline={ev.baselineAccuracy ?? 0} />
+            <ClassQuality model={modelName} accuracy={ev.accuracy} baseline={ev.baselineAccuracy} dumb={ev.baselineKind === "majority"} />
           ) : ev && !isClass && ev.mae !== undefined ? (
-            <RegressionQuality mae={ev.mae} baseline={ev.baselineMae ?? 0} />
+            <RegressionQuality model={modelName} mae={ev.mae} baseline={ev.baselineMae} dumb={ev.baselineKind === "mean"} />
           ) : result.validation === "selection" ? (
             <p className="tv-small">
               Couldn't measure accuracy: the selected rows need a known {target}, and some other rows must be left to learn from.
@@ -53,59 +53,14 @@ export function Results({ analysis, result, destination, onDestination, written,
         </div>
       )}
 
-      <h2>Predictions</h2>
-      <PredictionSummary result={result} rows={[...predictedRows]} />
-
       {result.featureSignals && result.featureSignals.length > 0 && (
         <>
-          <h2>Most useful signals</h2>
-          <div className="tv-bars tv-signals">
-            {result.featureSignals.slice(0, 6).map((s, i) => (
-              <Bar key={s.name} label={s.name} value={s.strength} strong={i === 0} />
-            ))}
-          </div>
+          <h2>{result.explanation ? "What drives the predictions" : "Most useful signals"}</h2>
+          <Signals signals={result.featureSignals} explained={result.explanation !== undefined} regression={!isClass} />
         </>
       )}
 
-      <h2>Add to sheet</h2>
-      <fieldset className="tv-options">
-        <legend className="tv-small" style={{ padding: 0, marginBottom: 6 }}>
-          {blank.length > 0
-            ? `Predictions for the ${plural(blank.length, "row")} without ${target}.`
-            : `Predictions for all ${plural(result.predictions.length, "row")}.`}
-        </legend>
-        <Option
-          value="new-columns"
-          current={destination}
-          onChange={onDestination}
-          title="New columns"
-          detail={isClass ? "Prediction and confidence, next to your table" : "Prediction, next to your table"}
-        />
-        <Option
-          value="new-sheet"
-          current={destination}
-          onChange={onDestination}
-          title="New sheet"
-          detail="A copy of your table with predictions added"
-        />
-        <Option
-          value="fill-blanks"
-          current={destination}
-          onChange={onDestination}
-          disabled={blank.length === 0}
-          title="Fill blank cells"
-          detail={blank.length > 0 ? `Write into the empty ${target} cells` : `Every row already has a ${target}`}
-        />
-      </fieldset>
-
-      {written ? (
-        <div className="tv-success" style={{ marginTop: 10 }} role="status">
-          <Icon.done />
-          <span>Added to {written}. Nothing else was changed.</span>
-        </div>
-      ) : writeError ? (
-        <Callout tone="danger">{writeError}</Callout>
-      ) : null}
+      {result.explainRow && <Waterfall analysis={analysis} rows={predictedRows} explainRow={result.explainRow} regression={!isClass} target={target} focus={focusRow} />}
 
       {result.metrics && Object.keys(result.metrics).length > 0 && (
         <Details summary="Advanced metrics">
@@ -122,18 +77,6 @@ export function Results({ analysis, result, destination, onDestination, written,
         </Details>
       )}
 
-      <Details summary="Details">
-        <table className="tv-metrics">
-          <tbody>
-            <tr><td>Model</td><td>{result.model?.displayName ?? "Tavolio Flash"}</td></tr>
-            <tr><td>Execution</td><td>Local</td></tr>
-            <tr><td>Features</td><td>{features}</td></tr>
-            <tr><td>Rows</td><td>{analysis.table.rows.length.toLocaleString("en-US")}</td></tr>
-            <tr><td>Missing values</td><td>Handled automatically</td></tr>
-          </tbody>
-        </table>
-      </Details>
-
       {result.warnings.length > 0 && (
         <Details summary="Notes">
           {result.warnings.map((w) => (
@@ -147,107 +90,81 @@ export function Results({ analysis, result, destination, onDestination, written,
   );
 }
 
-function PredictionSummary({ result, rows }: { result: PredictionResult; rows: number[] }) {
-  if (result.task.type === "classification") {
-    const tally = new Map<string, number>();
-    for (const i of rows) tally.set(String(result.predictions[i]), (tally.get(String(result.predictions[i])) ?? 0) + 1);
-    return (
-      <ul className="tv-facts">
-        {[...tally].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, n]) => (
-          <li key={label}>
-            <b>{n.toLocaleString("en-US")}</b> predicted {label}
-          </li>
-        ))}
-      </ul>
-    );
-  }
-  const nums = rows.map((i) => Number(result.predictions[i])).filter(Number.isFinite).sort((a, b) => a - b);
-  if (nums.length === 0) return null;
-  const mid = nums.length >> 1;
-  const med = nums.length % 2 ? nums[mid]! : (nums[mid - 1]! + nums[mid]!) / 2;
+const SIGNALS_SHOWN = 5;
+
+function Signals({ signals, explained, regression }: { signals: FeatureSignal[]; explained: boolean; regression: boolean }) {
+  const [all, setAll] = useState(false);
+  const [at, setAt] = useState<string | null>(null);
+  // Classification pushes are probability points; regression pushes are in the target's units.
+  const size = (v: number) => (regression ? num(v) : points(v).replace(/^\+/, ""));
   return (
-    <ul className="tv-facts">
-      <li>Median prediction <b>{compact(med)}</b></li>
-      <li>Range <b>{compact(nums[0]!)} – {compact(nums[nums.length - 1]!)}</b></li>
-    </ul>
+    <div className="tv-bars tv-signals" data-impact={explained ? "true" : "false"}>
+      {(all ? signals : signals.slice(0, SIGNALS_SHOWN)).map((s) => (
+        <Bar
+          key={s.name}
+          label={s.name}
+          value={s.strength}
+          strong
+          active={at === null ? null : at === s.name}
+          onActive={(on) => setAt(on ? s.name : null)}
+          display={s.impact === undefined ? undefined : regression ? `±${num(s.impact)}` : `±${points(s.impact).replace(/^\+/, "")}`}
+          tip={s.spread && (
+            <>
+              <b>{s.name}</b>
+              <br />
+              Min {size(s.spread.min)}
+              <br />
+              Max {size(s.spread.max)}
+              <br />
+              Std {size(s.spread.std)}
+            </>
+          )}
+        />
+      ))}
+      {signals.length > SIGNALS_SHOWN && (
+        <button className="tv-link tv-more" onClick={() => setAll(!all)} aria-expanded={all}>
+          {all ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
   );
 }
 
-function ClassQuality({ analysis, target, accuracy, baseline }: { analysis: Analysis; target: string; accuracy: number; baseline: number }) {
-  const majority = columnTopValues(analysis.table, target)[0]?.value;
-  const beats = accuracy - baseline >= 0.02;
+function ClassQuality({ model, accuracy, baseline, dumb }: { model: string; accuracy: number; baseline?: number; dumb: boolean }) {
+  const [at, setAt] = useState<string | null>(null);
+  const hover = (key: string) => ({ active: at === null ? null : at === key, onActive: (on: boolean) => setAt(on ? key : null) });
   return (
     <>
       <p className="tv-quality">
         Right <b>{pct(accuracy)}</b> of the time on rows it hadn't seen
       </p>
       <div className="tv-bars">
-        <Bar label="Guessing" value={baseline} display={pct(baseline)} />
-        <Bar label="Tavolio" value={accuracy} display={pct(accuracy)} strong />
+        {baseline !== undefined && <Bar label={dumb ? "Always the top" : "Baseline"} value={baseline} display={pct(baseline)} {...hover("baseline")} />}
+        <Bar label={model} value={accuracy} display={pct(accuracy)} strong {...hover("model")} />
       </div>
-      <p className="tv-small" style={{ marginTop: 8, marginBottom: 0 }}>
-        {majority ? `"Guessing" always answers "${majority}", the most common value.` : "Compared with always guessing the most common value."}
-      </p>
-      {!beats && (
-        <Callout tone="warn">
-          Tavolio isn't clearly beating a simple guess here. The other columns may not say much about {target}.
-        </Callout>
+      {baseline !== undefined && dumb && (
+        <p className="tv-small" style={{ marginTop: 8, marginBottom: 0 }}>"Always the top" guesses the most common value every time.</p>
       )}
     </>
   );
 }
 
-function RegressionQuality({ mae, baseline }: { mae: number; baseline: number }) {
-  const max = Math.max(mae, baseline, 1e-9);
-  const beats = baseline - mae >= 0.02 * baseline;
+function RegressionQuality({ model, mae, baseline, dumb }: { model: string; mae: number; baseline?: number; dumb: boolean }) {
+  const max = Math.max(mae, baseline ?? 0, 1e-9);
+  const [at, setAt] = useState<string | null>(null);
+  const hover = (key: string) => ({ active: at === null ? null : at === key, onActive: (on: boolean) => setAt(on ? key : null) });
   return (
     <>
       <p className="tv-quality">
         Typically off by <b>± {compact(mae)}</b>
       </p>
       <div className="tv-bars">
-        <Bar label="Guessing" value={baseline / max} display={`± ${compact(baseline)}`} />
-        <Bar label="Tavolio" value={mae / max} display={`± ${compact(mae)}`} strong />
+        {baseline !== undefined && <Bar label={dumb ? "Always average" : "Baseline"} value={baseline / max} display={`± ${compact(baseline)}`} {...hover("baseline")} />}
+        <Bar label={model} value={mae / max} display={`± ${compact(mae)}`} strong {...hover("model")} />
       </div>
       <p className="tv-small" style={{ marginTop: 8, marginBottom: 0 }}>
-        Shorter is better. "Guessing" always answers the average.
+        Shorter is better.{baseline !== undefined && dumb ? ' "Always average" guesses the average every time.' : ""}
       </p>
-      {!beats && (
-        <Callout tone="warn">Tavolio isn't clearly beating a simple average here. The other columns may not say much about it.</Callout>
-      )}
     </>
-  );
-}
-
-function Option({
-  value,
-  current,
-  onChange,
-  title,
-  detail,
-  disabled,
-}: {
-  value: Destination;
-  current: Destination;
-  onChange: (d: Destination) => void;
-  title: string;
-  detail: string;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="tv-option">
-      <input
-        type="radio"
-        name="tv-destination"
-        value={value}
-        checked={current === value}
-        disabled={disabled}
-        onChange={() => onChange(value)}
-      />
-      <div>
-        <b>{title}</b>
-        <span>{detail}</span>
-      </div>
-    </label>
   );
 }

@@ -2,31 +2,36 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { TavolioApp, TavolioLoading, type HostBridge } from "@tavolio/ui";
 import { ExcelBridge, loadOffice } from "./excelBridge.js";
-import { isEmbeddedInSheetsShell, iframeCall } from "./iframeTransport.js";
 import { SheetsBridge, hasAppsScript } from "./sheetsBridge.js";
+import { registerTabPfn, warmTabPfn } from "./tabpfn.js";
+import { registerTabPfnApi } from "./tabpfnApi.js";
 
 /**
- * One UI, three ways in:
- *  - inlined in the Sheets sidebar (google.script.run),
- *  - hosted, in an iframe of the Sheets shell (?host=sheets, postMessage),
- *  - hosted, as the Excel task pane (Office.js).
+ * One UI, two ways in:
+ *  - the Sheets sidebar, where Loader.html runs this bundle directly (google.script.run),
+ *  - the Excel task pane (Office.js).
  */
 async function pickHost(): Promise<HostBridge | null> {
   if (hasAppsScript()) return new SheetsBridge();
-  if (isEmbeddedInSheetsShell()) return new SheetsBridge(iframeCall);
   // Browser playground (`docker compose up app`): mock spreadsheet. Add ?host=excel to test in Excel.
   if (import.meta.env.DEV && new URLSearchParams(location.search).get("host") !== "excel") return null;
   return (await loadOffice()) ? new ExcelBridge() : null;
 }
 
 const root = createRoot(document.getElementById("root")!);
-root.render(<TavolioLoading />);
+// Sheets and Excel both title the pane themselves, so neither shows our own brand row (the dev playground does).
+root.render(<TavolioLoading brand={false} />);
 
 void pickHost().then((host) => {
   if (host) {
+    // TabPFN runs on WebGPU and is only wired up for Sheets so far; Excel stays on the built-in baseline until it's tested there.
+    const modelId = host.kind === "sheets" ? registerTabPfn() : undefined;
+    if (modelId) warmTabPfn();
+    // The API is a second choice in the Predict tab (the user's own Prior Labs key, held by Apps Script), so Sheets only.
+    const remote = host.kind === "sheets" ? registerTabPfnApi() : undefined;
     root.render(
       <React.StrictMode>
-        <TavolioApp host={host} theme="light" />
+        <TavolioApp host={host} theme="light" brand={false} modelId={modelId} remote={remote} />
       </React.StrictMode>,
     );
   } else if (import.meta.env.DEV) {

@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8"><title>tavolio model test</title>
+<script type="importmap">
+{ "imports": {
+  "@tavolio/table": "/pkg/table/index.js",
+  "@tavolio/preprocessing": "/pkg/preprocessing/index.js",
+  "@tavolio/runtime": "/pkg/runtime/index.js",
+  "@tavolio/models": "/pkg/models/index.js"
+} }
+</script>
+<script type="module">
+import * as ort from "/ort/ort.webgpu.bundle.min.mjs";
+import { OnyxRuntime, getGpuInfo } from "@tavolio/runtime";
+import { TabPfnClassifier } from "@tavolio/models";
+
+const q = new URLSearchParams(location.search);
+const model = q.get("model") ?? "tabpfn_fast_client_f32.onnx";
+const expectedKey = model.includes("_f32") ? "probabilitiesF32" : "probabilities";   // fixtures hold Python results for each variant
+const wanted = (q.get("cases") ?? "iris,wine").split(",");
+window.__log = [];
+const log = (m) => { window.__log.push(m); console.log(m); };
+const bytes = async (url) => new Uint8Array(await (await fetch(url)).arrayBuffer());
+
+try {
+  const gpu = await getGpuInfo();
+  log(`gpu: ${JSON.stringify(gpu)}`);
+  ort.env.wasm.wasmPaths = "/ort/";
+  ort.env.wasm.numThreads = 1;
+
+  let t = performance.now();
+  const [graph, data] = await Promise.all([bytes(`/model/${model}`), bytes(`/model/${model}.data`)]);
+  log(`downloaded ${model}: ${(graph.length / 1e6).toFixed(1)} + ${(data.length / 1e6).toFixed(1)} MB in ${((performance.now() - t) / 1000).toFixed(1)} s`);
+
+  const runtime = new OnyxRuntime({
+    ort, executionProviders: ["webgpu"],
+    loadModel: async () => ({ model: graph, externalData: [{ path: `${model}.data`, data }] }),
+  });
+  t = performance.now();
+  await runtime.preload(model);
+  log(`session created in ${((performance.now() - t) / 1000).toFixed(1)} s`);
+
+  const classifier = new TabPfnClassifier(runtime, model);
+  const cases = (await (await fetch("/parity.json")).json()).filter((c) => wanted.includes(c.name));
+  const results = [];
+  for (const c of cases) {
+    const x = c.x.map((v) => (v === "NaN" ? NaN : v));
+    const split = c.nTrain * c.cols;
+    t = performance.now();
+    const { probabilities } = await classifier.predictProba({ cols: c.cols, trainX: x.slice(0, split), trainY: c.yTrain, testX: x.slice(split), numClasses: c.numClasses });
+    const ms = performance.now() - t;
+    let maxDiff = 0, agree = 0;
+    for (let r = 0; r < c.nTest; r++) {
+      let a = 0, b = 0;
+      for (let k = 0; k < c.numClasses; k++) {
+        const i = r * c.numClasses + k;
+        maxDiff = Math.max(maxDiff, Math.abs(probabilities[i] - c[expectedKey][i]));
+        if (probabilities[i] > probabilities[r * c.numClasses + a]) a = k;
+        if (c[expectedKey][i] > c[expectedKey][r * c.numClasses + b]) b = k;
+      }
+      if (a === b) agree++;
+    }
+    results.push({ name: c.name, nTrain: c.nTrain, nTest: c.nTest, maxDiff, agree, ms: Math.round(ms) });
+    log(`case ${c.name}: max|dp| ${maxDiff.toExponential(2)}, argmax agreement ${agree}/${c.nTest}, ${Math.round(ms)} ms`);
+  }
+  await runtime.dispose();
+  window.__result = { ok: true, results };
+} catch (e) {
+  window.__result = { ok: false, error: String(e?.message ?? e) };
+}
+</script>

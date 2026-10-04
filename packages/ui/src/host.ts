@@ -22,10 +22,12 @@ export interface SheetTable extends TableRef {
   values: unknown[][];
 }
 
-/** The cell the user most recently clicked (1-based column). */
+/** The cell the user most recently clicked (1-based column and row). */
 export interface ActiveCell {
   sheetName: string;
   column: number;
+  /** 1-based sheet row. Optional: a host that can't say just drives column clicks. */
+  row?: number;
 }
 
 export interface PredictionColumn {
@@ -61,7 +63,7 @@ export interface WriteResult {
 export type HostErrorCode = "no-selection" | "no-table";
 
 /** Shown when nothing usable is selected. One wording for every host. */
-export const NO_TABLE_MESSAGE = "Select any cell inside your table, and Tavolio will find the rest.";
+export const NO_TABLE_MESSAGE = "Select your table (any cell inside it is enough), then click Use current selection.";
 
 export class HostError extends Error {
   constructor(

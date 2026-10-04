@@ -13,6 +13,15 @@ export const DEFAULT_VALIDATION: ValidationChoice = { mode: "random", cells: "",
 export const MIN_PERCENT = 5;
 export const MAX_PERCENT = 90;
 
+/** Prediction interval coverage, in percent. */
+export const DEFAULT_INTERVAL_PERCENT = 95;
+export const MIN_INTERVAL_PERCENT = 50;
+export const MAX_INTERVAL_PERCENT = 99;
+/** The share (0..1) to ask the model for; an out-of-range entry falls back to the default. */
+export function intervalLevel(percent: number): number {
+  return percent >= MIN_INTERVAL_PERCENT && percent <= MAX_INTERVAL_PERCENT ? percent / 100 : DEFAULT_INTERVAL_PERCENT / 100;
+}
+
 interface TableRows {
   /** 1-based sheet row of the header. */
   row: number;
@@ -67,4 +76,20 @@ export function validationStrategy(v: ValidationChoice, t: TableRows): Validatio
   }
   const spec = parseRowSpec(v.cells, t);
   return spec.ok && spec.rows.length > 0 ? { kind: "selection", rows: spec.rows } : null;
+}
+
+/** Which rows get predictions: the blank-target cells, or exactly the rows named in `cells`. */
+export interface PredictChoice {
+  mode: "empty" | "selection";
+  /** Rows to predict, in A1 notation. Used when mode is "selection". */
+  cells: string;
+}
+
+export const DEFAULT_PREDICT: PredictChoice = { mode: "empty", cells: "" };
+
+/** undefined = blank targets (the default); null = can't run yet (bad or empty selection); otherwise the 0-based rows to predict. */
+export function predictRows(c: PredictChoice, t: TableRows): number[] | null | undefined {
+  if (c.mode === "empty") return undefined;
+  const spec = parseRowSpec(c.cells, t);
+  return spec.ok && spec.rows.length > 0 ? spec.rows : null;
 }

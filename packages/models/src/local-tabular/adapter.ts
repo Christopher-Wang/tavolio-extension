@@ -1,8 +1,10 @@
-import { isMissingValue } from "@tavolio/preprocessing";
+import { exemptFromIdentifierRule, isMissingValue } from "@tavolio/preprocessing";
 import type { ColumnSchema, Table } from "@tavolio/table";
 
 export interface EncodedFrame {
   featureNames: string[];
+  /** Per encoded column: the sheet column it came from (a category's one-hot columns share one). */
+  source: string[];
   matrix: number[][];
   rowMask: boolean[];
 }
@@ -42,15 +44,16 @@ export function isUsableFeature(col: ColumnSchema, table: Table): boolean {
   const idx = table.columns.findIndex((c) => c.name === col.name);
   if (idx === -1) return true;
   const seen = new Set<string>();
-  let n = 0;
+  const observed: unknown[] = [];
   for (const row of table.rows) {
     const v = row[idx];
     if (isMissingValue(v)) continue;
-    n++;
+    observed.push(v);
     seen.add(String(v).trim().toLowerCase());
   }
-  // Unique-per-row values are identifiers (§4): no signal, huge one-hot width.
-  if (n >= 3 && seen.size === n) return false;
+  const n = observed.length;
+  // Unique-per-row values are identifiers (§4): no signal, huge one-hot width. Dates and continuous numbers are exempt.
+  if (n >= 3 && seen.size === n && !exemptFromIdentifierRule(col.type, observed)) return false;
   // >60% missing: too sparse to help.
   if (table.rows.length >= 5 && n / table.rows.length < 0.4) return false;
   return true;
@@ -99,18 +102,21 @@ function fit(table: Table, schema: ColumnSchema[], target: string, featureCols: 
   return { featureCols, colIndex, categories, numericMeans };
 }
 
-function featureNamesOf(fitted: Fitted): string[] {
+function featureNamesOf(fitted: Fitted): { names: string[]; source: string[] } {
   const names: string[] = [];
+  const source: string[] = [];
   for (const col of fitted.featureCols) {
     if (fitted.categories.has(col.name)) {
       const vocab = fitted.categories.get(col.name)!;
       for (const key of vocab.keys()) names.push(`${col.name}__${key}`);
       names.push(`${col.name}__MISSING`);
+      for (let i = 0; i <= vocab.size; i++) source.push(col.name);
     } else {
       names.push(col.name);
+      source.push(col.name);
     }
   }
-  return names;
+  return { names, source };
 }
 
 function encodeOne(fitted: Fitted, row: unknown[]): number[] {
@@ -149,25 +155,6 @@ export function encodeFeatures(
   const fitted = fit(table, schema, target, featureCols);
   const matrix = table.rows.map((row) => encodeOne(fitted, row));
   const rowMask = table.rows.map(() => true);
-  return { frame: { featureNames: featureNamesOf(fitted), matrix, rowMask }, categories: fitted.categories };
+  const { names, source } = featureNamesOf(fitted);
+  return { frame: { featureNames: names, source, matrix, rowMask }, categories: fitted.categories };
 }
-
-/**
- * Encode one row using only `subset` columns, fitted on the full table
- * (vocabularies + imputation reuse the same logic). Used for
- * single-feature signal ranking (§6, §9) without leaking model internals.
- */
-export function encodeRowSubset(
-  table: Table,
-  schema: ColumnSchema[],
-  target: string,
-  row: unknown[],
-  subset: ColumnSchema[],
-): number[] {
-  const names = new Set(subset.map((c) => c.name));
-  const featureCols = schema.filter((c) => names.has(c.name) && c.name !== target);
-  if (featureCols.length === 0) return [];
-  const fitted = fit(table, schema, target, featureCols);
-  return encodeOne(fitted, row);
-}
-

@@ -1,22 +1,36 @@
+import type { ReactNode } from "react";
+import type { LoadProgress } from "@tavolio/models";
 import type { GpuInfo } from "@tavolio/runtime";
 import type { HostKind } from "../host.js";
 import type { PredictStage } from "../analysis.js";
 import { Details, Icon } from "../components.js";
 
-const STEPS: Array<{ stage: PredictStage; label: string }> = [
-  { stage: "preparing", label: "Preparing data…" },
-  { stage: "predicting", label: "Running model…" },
-  { stage: "evaluating", label: "Evaluating predictions…" },
-];
+const mb = (bytes: number) => Math.round(bytes / 1e6);
+
+/** First run downloads the model (then it's cached); every run may need a moment to ready it on the GPU. */
+function loadingLabel(p: LoadProgress): string {
+  if (p.phase === "prepare") return "Getting the model ready…";
+  const size = p.total ? `${mb(p.loaded ?? 0)} of ${mb(p.total)} MB` : `${mb(p.loaded ?? 0)} MB`;
+  return `Downloading the model, first run only (${size})…`;
+}
 
 export interface RunningProps {
   target: string;
   stage: PredictStage;
+  /** Set once the model reports a download/prepare phase; adds a step. */
+  loading?: LoadProgress;
+  /** What the model runs on, for the details table. */
+  runtime: string;
   rows: number;
   features: number;
   model: string;
   gpu: GpuInfo | null;
   host: HostKind;
+  /** Quality is being scored, which adds the "compare with a baseline" step. */
+  scored: boolean;
+  /** The run has finished: every step is ticked and `children` (what to do next) replaces the privacy note. */
+  done?: boolean;
+  children?: ReactNode;
 }
 
 function gpuLabel(gpu: GpuInfo | null): string {
@@ -43,14 +57,20 @@ function gpuAdvice(gpu: GpuInfo | null, host: HostKind): string | null {
 }
 
 /** §5: lightweight, reassuring, technical details one click away. */
-export function Running({ target, stage, rows, features, model, gpu, host }: RunningProps) {
+export function Running({ target, stage, loading, runtime, rows, features, model, gpu, host, scored, done, children }: RunningProps) {
   const advice = gpuAdvice(gpu, host);
-  const current = STEPS.findIndex((s) => s.stage === stage);
+  const steps: Array<{ stage: PredictStage; label: string }> = [
+    ...(loading ? [{ stage: "loading-model" as const, label: loadingLabel(loading) }] : []),
+    { stage: "predicting", label: "Running model…" },
+    { stage: "evaluating", label: "Evaluating predictions…" },
+    ...(scored ? [{ stage: "baseline" as const, label: "Comparing with baseline…" }] : []),
+  ];
+  const current = done ? steps.length : Math.max(0, steps.findIndex((s) => s.stage === stage));
   return (
     <div className="tv-screen">
-      <h1>Predicting {target}</h1>
+      <h1>{done ? `${target} predicted` : `Predicting ${target}`}</h1>
       <ol className="tv-steps" aria-live="polite">
-        {STEPS.map((s, i) => {
+        {steps.map((s, i) => {
           const state = i < current ? "done" : i === current ? "active" : "todo";
           return (
             <li key={s.stage} className="tv-step" data-state={state}>
@@ -60,13 +80,17 @@ export function Running({ target, stage, rows, features, model, gpu, host }: Run
           );
         })}
       </ol>
-      <div className="tv-privacy">
-        <Icon.lock />
-        <div>
-          <b>Running locally</b>
-          Your spreadsheet data doesn't leave your device.
+      <h2>Add to sheet</h2>
+      {children}
+      {!done && (
+        <div className="tv-privacy">
+          <Icon.lock />
+          <div>
+            <b>Running locally</b>
+            Your spreadsheet data doesn't leave your device.
+          </div>
         </div>
-      </div>
+      )}
       <Details summary="Details">
         <table className="tv-metrics">
           <tbody>
@@ -76,7 +100,7 @@ export function Running({ target, stage, rows, features, model, gpu, host }: Run
             </tr>
             <tr>
               <td>Runtime</td>
-              <td>CPU</td>
+              <td>{runtime}</td>
             </tr>
             <tr>
               <td>Graphics</td>

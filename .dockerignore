@@ -12,3 +12,4 @@ coverage
 .turbo
 apps/google-sheets/dist
 packages/*/dist
+tools

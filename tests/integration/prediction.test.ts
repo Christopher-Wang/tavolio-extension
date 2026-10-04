@@ -111,6 +111,15 @@ describe("prediction pipeline", () => {
     });
   });
 
+  it("lets a table through when only some classes are rare, and warns about them", async () => {
+    const rows: string[][] = [];
+    for (let i = 0; i < 20; i++) rows.push([`f${i % 5}`, "Hip"]);
+    for (let i = 0; i < 12; i++) rows.push([`g${i % 4}`, "Gable"]);
+    rows.push(["x", "Flat"], ["y", "Mansard"]);
+    const res = await predictTable({ table: fromValues(["Feature", "Roof"], rows), target: "Roof" });
+    assert.ok(res.warnings.some((w) => /Only one example each of "Flat", "Mansard"/.test(w)), res.warnings.join("|"));
+  });
+
   it("doesn't mistake dash-separated IDs for dates", () => {
     const ids = Array.from({ length: 20 }, (_, i) => [`L-${1001 + i}`, `2025-01-${String(i + 1).padStart(2, "0")}`]);
     const schema = inferSchema(fromValues(["Lead ID", "Signup"], ids)).columns;
@@ -121,7 +130,13 @@ describe("prediction pipeline", () => {
   it("reports progress stages and the model used", async () => {
     const stages: string[] = [];
     const result = await predictTable({ table: loadCsv("churn.csv"), target: "Churn", onProgress: (s) => void stages.push(s) });
-    assert.deepEqual(stages, ["preparing", "predicting", "evaluating"]);
+    assert.deepEqual(stages, ["preparing", "predicting", "evaluating", "baseline"]);
     assert.equal(result.model?.id, "local-tabular-v1");
+  });
+
+  it("skips the baseline stage when scoring is off", async () => {
+    const stages: string[] = [];
+    await predictTable({ table: loadCsv("churn.csv"), target: "Churn", validation: { kind: "none" }, onProgress: (s) => void stages.push(s) });
+    assert.deepEqual(stages, ["preparing", "predicting", "evaluating"]);
   });
 });

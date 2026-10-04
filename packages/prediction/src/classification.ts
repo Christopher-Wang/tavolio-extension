@@ -95,6 +95,16 @@ export function inferTask(
   });
 }
 
+/** Classes with a single known example: kept, but the model is unlikely to ever predict them. */
+export function rareClasses(targetValues: unknown[]): string[] {
+  const counts = new Map<string, number>();
+  for (const v of targetValues) {
+    if (isMissingValue(v)) continue;
+    counts.set(String(v), (counts.get(String(v)) ?? 0) + 1);
+  }
+  return [...counts].filter(([, n]) => n < 2).map(([value]) => value);
+}
+
 function validateClasses(target: string, classes: string[], targetValues: unknown[]): void {
   if (classes.length < 2) {
     throw new PredictError({
@@ -123,8 +133,11 @@ function validateClasses(target: string, classes: string[], targetValues: unknow
   const minority = sorted[sorted.length - 1]!;
   // Tiny tables (fixtures) can't satisfy a minority-count gate: with only a
   // handful of rows every class is rare. Require the gate only when there's
-  // enough data to trust it (§13); otherwise let the kNN baseline run.
-  if (minority.count < 2 && observedForGate >= 20) {
+  // enough data to trust it (§13); otherwise let the linear baseline run.
+  // A rare class alongside at least two learnable ones doesn't block the run
+  // (the models cope; `rareClasses` turns it into a warning). It blocks only
+  // when fewer than two classes have two or more examples.
+  if (sorted.filter((c) => c.count >= 2).length < 2 && observedForGate >= 20) {
     throw new PredictError({
       title: "Not enough examples yet",
       detail: `Tavolio needs more examples of "${minority.value}" to reliably learn this pattern.`,

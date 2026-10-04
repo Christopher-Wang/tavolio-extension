@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      html, body, #root { margin: 0; height: 100%; }
+      body { overflow: hidden; font: 13px system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root">Loading…</div>
+    <!-- The UI runs in this document, so google.script.run is called directly (no iframe relay). -->
+    <script type="module" src="<?= script ?>" onerror="document.getElementById('root').textContent = 'Could not load <?= script ?>'"></script>
+  </body>
+</html>

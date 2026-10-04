@@ -6,10 +6,7 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Tavolio")
-    .addItem("Open Tavolio (hosted)", "showHostedSidebar")
-    .addItem("Open Tavolio (local https)", "showLocalSidebar")
-    .addSeparator()
-    .addItem("Device check (local https)", "showLocalProbe")
+    .addItem("Open Tavolio", "openTavolio")
     .addToUi();
 }
 
@@ -17,30 +14,16 @@ function onInstall(e) {
   onOpen(e);
 }
 
-// The hosted build (GitHub Pages) is the same UI Excel loads. It runs in an iframe here and
-// reaches the sheet through Shell.html's postMessage relay.
-const TAVOLIO_HOSTED_URL = "https://christopher-wang.github.io/tavolio/";
+// Where the UI bundle is served from: `make serve` locally, our backend in production.
+const TAVOLIO_URL = "https://localhost:3000/";
 
-const TAVOLIO_LOCAL_URL = "https://localhost:3000/";
-
-function showHostedSidebar() {
-  showShell_(TAVOLIO_HOSTED_URL);
-}
-
-/** Same UI served by `make dev` on this machine. */
-function showLocalSidebar() {
-  showShell_(TAVOLIO_LOCAL_URL);
-}
-
-/** Same probe, but inside the Shell iframe like the real UI (served from public/probe.html). */
-function showLocalProbe() {
-  showShell_(TAVOLIO_LOCAL_URL, "probe.html");
-}
-
-function showShell_(baseUrl, path) {
-  const t = HtmlService.createTemplateFromFile("Shell");
-  t.url = path ? baseUrl + path : baseUrl + "?host=sheets";
-  t.origin = baseUrl.replace(/^(https:\/\/[^\/]+).*$/, "$1");
+/**
+ * The UI script runs in the sidebar document itself (Loader.html), so it calls the functions
+ * below directly through google.script.run. Client half: apps/google-sheets/src/sheetsBridge.ts.
+ */
+function openTavolio() {
+  const t = HtmlService.createTemplateFromFile("Loader");
+  t.script = TAVOLIO_URL + "assets/app.js";
   SpreadsheetApp.getUi().showSidebar(t.evaluate().setTitle("Tavolio"));
 }
 
@@ -86,11 +69,11 @@ function tavolioReadTable() {
   };
 }
 
-/** Polled by the sidebar (~1/s) so clicking a column in the grid can drive the UI. */
+/** Polled by the sidebar (~1/s) so clicking a column (or, on the results screen, a row) in the grid can drive the UI. */
 function tavolioActiveCell() {
   const cell = SpreadsheetApp.getCurrentCell();
   if (!cell) return null;
-  return { sheetName: cell.getSheet().getName(), column: cell.getColumn() };
+  return { sheetName: cell.getSheet().getName(), column: cell.getColumn(), row: cell.getRow() };
 }
 
 /** 0-based data-row indexes of the table covered by the current selection (all ranges, header excluded). */
@@ -114,6 +97,65 @@ function tavolioSelectedRows(table) {
 function tavolioSelectColumn(table, offset) {
   const sheet = sheetByName_(table.sheetName);
   sheet.getRange(table.row, table.column + offset, table.rows + 1, 1).activate();
+}
+
+// ---- Prior Labs API (TabPFN) -----------------------------------------------
+// Client half: packages/models/src/tabpfn/api.ts (HostedTransport, ApiKeyStore). api.priorlabs.ai only allows its own web
+// origins, so the sidebar can't call it; these functions do, and hold each user's own key (never sent back to the page).
+
+const PRIORLABS_API = "https://api.priorlabs.ai";
+const API_KEY_PROPERTY = "PRIORLABS_API_KEY";
+
+function tavolioApiKeySet() {
+  return !!PropertiesService.getUserProperties().getProperty(API_KEY_PROPERTY);
+}
+
+function tavolioApiKeySave(key) {
+  const trimmed = String(key || "").trim();
+  if (!trimmed) throw new Error("Enter an API key");
+  PropertiesService.getUserProperties().setProperty(API_KEY_PROPERTY, trimmed);
+}
+
+function tavolioApiKeyClear() {
+  PropertiesService.getUserProperties().deleteProperty(API_KEY_PROPERTY);
+}
+
+/** One JSON call to the API as this user. Returns { status, body } for any HTTP status; only a failure to reach the API throws. */
+function tavolioApiRequest(method, path, body) {
+  const key = PropertiesService.getUserProperties().getProperty(API_KEY_PROPERTY);
+  if (!key) return { status: 401, body: { detail: "No API key" } };
+  if (!/^\/tabpfn\/[a-z_]+$/.test(path)) throw new Error("Unexpected API path");
+  const options = {
+    method: method === "GET" ? "get" : "post",
+    headers: { Authorization: "Bearer " + key },
+    muteHttpExceptions: true,
+  };
+  if (method !== "GET") {
+    options.contentType = "application/json";
+    options.payload = JSON.stringify(body || {});
+  }
+  const res = UrlFetchApp.fetch(PRIORLABS_API + path, options);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(res.getContentText());
+  } catch (e) {
+    // Not JSON (a gateway error page): the status alone is reported.
+  }
+  return { status: res.getResponseCode(), body: parsed };
+}
+
+/** PUT a file to a signed upload URL. The key is not sent: the URL carries its own authorisation. */
+function tavolioApiUpload(url, headers, body) {
+  if (!/^https:\/\//.test(url)) throw new Error("Unexpected upload address");
+  const options = { method: "put", headers: headers || {}, payload: body, muteHttpExceptions: true };
+  Object.keys(options.headers).forEach(function (h) {
+    const name = h.toLowerCase();
+    // Content-Type is set through its own option; as a plain header it would be overridden.
+    if (name === "content-type") options.contentType = options.headers[h];
+    // UrlFetchApp sets these itself and throws "Attribute provided with invalid value: Header:Host" if given them.
+    if (name === "content-type" || name === "host" || name === "content-length") delete options.headers[h];
+  });
+  return { status: UrlFetchApp.fetch(url, options).getResponseCode() };
 }
 
 // ---- HostBridge: write -----------------------------------------------------
@@ -140,11 +182,17 @@ function tavolioWrite(plan) {
 function newColumns_(plan) {
   const t = plan.table;
   const sheet = sheetByName_(t.sheetName);
-  const header = sheet.getRange(t.row, t.column, 1, t.columns).getValues()[0].map(String);
+  const headRange = sheet.getRange(t.row, t.column, 1, t.columns);
+  const header = headRange.getValues()[0].map(String);
+  const headNotes = headRange.getNotes()[0];
   let end = t.column + t.columns - 1;
+  // Reuse a column only if Tavolio wrote it (its header note says so): a user's own column that happens to
+  // share the name is never overwritten, a new column is inserted instead.
   const dests = plan.columns.map(function (col) {
-    const i = header.indexOf(col.header);
-    return i >= 0 ? t.column + i : -1;
+    for (let i = 0; i < header.length; i++) {
+      if (header[i] === col.header && isTavolioNote_(headNotes[i])) return t.column + i;
+    }
+    return -1;
   });
   for (let k = 0; k < dests.length; k++) {
     if (dests[k] !== -1) continue;
@@ -180,6 +228,15 @@ function newSheet_(plan) {
   return { sheetName: name, address: sheet.getRange(1, 1, t.rows + 1, width).getA1Notation() };
 }
 
+function isTavolioNote_(note) {
+  return /^(Added by Tavolio|How sure Tavolio)/.test(note || "");
+}
+
+/**
+ * Writes only into cells that are empty and have no formula, one contiguous run at a time. Cells between
+ * runs are never touched (rewriting them would re-parse text like "00123" or "1/2" into numbers and dates),
+ * and a note a user left on an empty cell is kept.
+ */
 function fillBlanks_(plan) {
   const t = plan.table;
   const sheet = sheetByName_(t.sheetName);
@@ -187,28 +244,32 @@ function fillBlanks_(plan) {
   const values = range.getValues();
   const formulas = range.getFormulas();
   const notes = range.getNotes();
-  let first = -1;
-  let last = -1;
+  const fill = [];
   for (let i = 0; i < t.rows; i++) {
     const v = plan.values[i];
-    if (v === null || v === undefined) continue;
-    if (values[i][0] !== "" || formulas[i][0] !== "") continue;
-    values[i][0] = v;
-    if (plan.notes[i]) notes[i][0] = plan.notes[i];
+    fill.push(v !== null && v !== undefined && values[i][0] === "" && formulas[i][0] === "");
+  }
+  let first = -1;
+  let last = -1;
+  let i = 0;
+  while (i < t.rows) {
+    if (!fill[i]) { i++; continue; }
+    let j = i;
+    while (j + 1 < t.rows && fill[j + 1]) j++;
+    const run = sheet.getRange(t.row + 1 + i, t.column + plan.targetOffset, j - i + 1, 1);
+    run.setValues(plan.values.slice(i, j + 1).map(function (v) { return [v]; }));
+    run.setFontColor(FORECAST_COLOR);
+    run.setNotes(plan.notes.slice(i, j + 1).map(function (n, k) { return [notes[i + k][0] || n || ""]; }));
     if (first === -1) first = i;
-    last = i;
+    last = j;
+    i = j + 1;
   }
   if (first === -1) return { sheetName: sheet.getName(), address: "" };
-  // Write back only the changed span; keep existing formulas intact.
-  const span = values.slice(first, last + 1).map(function (row, j) {
-    const f = formulas[first + j][0];
-    return [f !== "" ? f : row[0]];
-  });
-  const out = sheet.getRange(t.row + 1 + first, t.column + plan.targetOffset, last - first + 1, 1);
-  out.setValues(span);
-  out.setNotes(notes.slice(first, last + 1));
-  return { sheetName: sheet.getName(), address: out.getA1Notation() };
+  return { sheetName: sheet.getName(), address: sheet.getRange(t.row + 1 + first, t.column + plan.targetOffset, last - first + 1, 1).getA1Notation() };
 }
+
+/** Tavolio green (the pane's accent): forecasted values are written in it so they stand out from the user's data. */
+const FORECAST_COLOR = "#0b7a5c";
 
 function writeColumn_(sheet, headerRow, column, col) {
   const head = sheet.getRange(headerRow, column);
@@ -216,6 +277,7 @@ function writeColumn_(sheet, headerRow, column, col) {
   if (col.values.length === 0) return;
   const body = sheet.getRange(headerRow + 1, column, col.values.length, 1);
   body.setValues(col.values.map(function (v) { return [v === null ? "" : v]; }));
+  body.setFontColor(FORECAST_COLOR);
   if (col.format === "percent") body.setNumberFormat("0%");
 }
 

@@ -67,7 +67,7 @@ export class DevBridge implements HostBridge {
     this.state.cell = { row, column };
     this.state.selection = null;
     this.changed();
-    for (const fn of this.listeners) fn({ sheetName: this.state.active, column });
+    for (const fn of this.listeners) fn({ sheetName: this.state.active, column, row });
   }
   clickColumnHeader(column: number): void {
     const g = this.grid();

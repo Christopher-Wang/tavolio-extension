@@ -13,6 +13,7 @@
     "@tavolio/models": "0.1.0",
     "@tavolio/prediction": "0.1.0",
     "@tavolio/preprocessing": "0.1.0",
+    "@tavolio/runtime": "0.1.0",
     "@tavolio/table": "0.1.0"
   },
   "devDependencies": {

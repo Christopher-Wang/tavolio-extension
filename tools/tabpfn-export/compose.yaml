@@ -1,0 +1,11 @@
+# TabPFN-3.5-Fast -> client ONNX model (see README.md). Run from this directory:
+#   docker compose run --rm -e TABPFN_TOKEN export sh build_model.sh
+services:
+  export:
+    build: .
+    volumes:
+      - .:/work
+      - ./.cache:/cache
+      - ./out:/out
+      - ../../tests/fixtures:/fixtures
+    working_dir: /work

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Tavolio for Excel, served by the Vite dev server (docker compose up app). ?host=excel makes the dev build use the
+  Tavolio for Excel, served from https://localhost:3000 by either the Vite dev server (`make app`, hot reload) or the
+  watched production build (`make serve`). ?host=excel makes the dev build use the
   workbook instead of the browser mock spreadsheet.
-  Separate add-in Id from manifest.xml so both can be installed side by side.
+  Production will need its own manifest (and add-in Id) once the hosted backend URL exists.
 -->
 <OfficeApp
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
