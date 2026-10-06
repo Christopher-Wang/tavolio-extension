@@ -4,6 +4,17 @@ Local-first tabular prediction for spreadsheets. Principle: **the spreadsheet
 host is a shell; the tabular engine is the product.** Google Sheets-specific
 code stays thin so Excel (or any host) can reuse the same packages later.
 
+## Demo
+
+**Google Sheets: customer churn (classification).** Predicts the blank `Churn` cells
+from the rest of each customer's row.
+
+<!-- Drag demos/sheets-churn.mp4 here (GitHub web editor) -->
+
+**Excel: house prices (regression).** Fills in the missing `SalePrice` values.
+
+<!-- Drag demos/excel-housing.mp4 here (GitHub web editor) -->
+
 ## Layout
 
 ```text
