@@ -10,10 +10,13 @@ code stays thin so Excel (or any host) can reuse the same packages later.
 from the rest of each customer's row.
 
 <!-- Drag demos/sheets-churn.mp4 here (GitHub web editor) -->
+https://github.com/user-attachments/assets/46eb40f1-efdf-411c-9244-b5105bf20e9f
 
 **Excel: house prices (regression).** Fills in the missing `SalePrice` values.
 
 <!-- Drag demos/excel-housing.mp4 here (GitHub web editor) -->
+https://github.com/user-attachments/assets/3c65bc36-9280-4fbb-b3a2-6cc0ebcde1d3
+
 
 ## Layout
 
