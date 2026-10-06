@@ -13,7 +13,7 @@ import { registerTabPfnApi } from "./tabpfnApi.js";
  */
 async function pickHost(): Promise<HostBridge | null> {
   if (hasAppsScript()) return new SheetsBridge();
-  // Browser playground (`docker compose up app`): mock spreadsheet. Add ?host=excel to test in Excel.
+  // Browser playground (`npm run dev` in apps/google-sheets): mock spreadsheet. Add ?host=excel to test in Excel.
   if (import.meta.env.DEV && new URLSearchParams(location.search).get("host") !== "excel") return null;
   return (await loadOffice()) ? new ExcelBridge() : null;
 }
@@ -24,11 +24,11 @@ root.render(<TavolioLoading brand={false} />);
 
 void pickHost().then((host) => {
   if (host) {
-    // TabPFN runs on WebGPU and is only wired up for Sheets so far; Excel stays on the built-in baseline until it's tested there.
-    const modelId = host.kind === "sheets" ? registerTabPfn() : undefined;
-    if (modelId) warmTabPfn();
-    // The API is a second choice in the Predict tab (the user's own Prior Labs key, held by Apps Script), so Sheets only.
-    const remote = host.kind === "sheets" ? registerTabPfnApi() : undefined;
+    // TabPFN runs on WebGPU in both hosts; without WebGPU it falls back to the built-in baseline.
+    const modelId = registerTabPfn();
+    warmTabPfn();
+    // The API is a second choice in the Predict tab (the user's own Prior Labs key): held by Apps Script in Sheets, by the pane in Excel.
+    const remote = registerTabPfnApi(host.kind === "sheets" ? "apps-script" : "browser");
     root.render(
       <React.StrictMode>
         <TavolioApp host={host} theme="light" brand={false} modelId={modelId} remote={remote} />

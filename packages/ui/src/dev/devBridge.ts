@@ -33,7 +33,7 @@ function a1(r: Rect): string {
 /**
  * In-memory spreadsheet that behaves like the real hosts: data-region
  * detection, native selection events, nondestructive writes. Drives the
- * browser playground (`docker compose up app`).
+ * browser playground (`npm run dev` in apps/google-sheets).
  */
 export class DevBridge implements HostBridge {
   readonly kind = "dev" as const;

@@ -13,6 +13,10 @@ export interface PredictProps {
   modelName: string;
   /** A hosted model is available as a second choice. */
   remote: boolean;
+  /** Where the API key is kept, for the note under the key field. */
+  keyHint?: string;
+  /** The two engine cards one above the other instead of side by side (the narrow Excel pane). */
+  stackEngines?: boolean;
   engine: Engine;
   onEngine: (e: Engine) => void;
   /** Whether an API key is saved; null while the host is still being asked. */
@@ -68,7 +72,7 @@ function taskLine(preview: Extract<TargetPreview, { ok: true }>): { task: string
 }
 
 /** The default view: what to predict, what Tavolio will use, one button. */
-export function Predict({ analysis, target, preview, gpu, modelName, remote, engine, onEngine, keySet, onSaveKey, onClearKey, flashKey, onTarget, validation, onValidation, onReadSelection, predictChoice, onPredictChoice, includeProbabilities, onIncludeProbabilities, includeInterval, onIncludeInterval, intervalPercent, onIntervalPercent, explain, onExplain, writeExplanations, onWriteExplanations, baseline, onBaseline, busy, onRefresh }: PredictProps) {
+export function Predict({ analysis, target, preview, gpu, modelName, remote, keyHint, stackEngines, engine, onEngine, keySet, onSaveKey, onClearKey, flashKey, onTarget, validation, onValidation, onReadSelection, predictChoice, onPredictChoice, includeProbabilities, onIncludeProbabilities, includeInterval, onIncludeInterval, intervalPercent, onIntervalPercent, explain, onExplain, writeExplanations, onWriteExplanations, baseline, onBaseline, busy, onRefresh }: PredictProps) {
   const { table, profiles } = analysis;
   const byType = profiles.reduce<Record<string, string[]>>((acc, p) => {
     (acc[typeLabel(p.type)] ??= []).push(p.name);
@@ -173,7 +177,7 @@ export function Predict({ analysis, target, preview, gpu, modelName, remote, eng
       {remote && (
         <>
           <h2>Where to run it</h2>
-          <fieldset className="tv-options tv-engine" aria-label="Where to run the model">
+          <fieldset className={`tv-options tv-engine${stackEngines ? " tv-engine-stack" : ""}`} aria-label="Where to run the model">
             <label className="tv-engine-card">
               <input type="radio" name="tv-engine" checked={engine === "local"} onChange={() => onEngine("local")} />
               <Icon.lock />
@@ -187,7 +191,7 @@ export function Predict({ analysis, target, preview, gpu, modelName, remote, eng
               <span>Runs on Prior Labs' servers, with your own API key</span>
             </label>
           </fieldset>
-          {engine === "api" ? <ApiKey keySet={keySet} onSave={onSaveKey} onClear={onClearKey} /> : <GpuStatus gpu={gpu} />}
+          {engine === "api" ? <ApiKey keySet={keySet} onSave={onSaveKey} onClear={onClearKey} hint={keyHint} /> : <GpuStatus gpu={gpu} />}
         </>
       )}
       {!remote && (
@@ -323,7 +327,7 @@ function GpuStatus({ gpu }: { gpu: GpuInfo | null }) {
 }
 
 /** The user's own Prior Labs key: saved by the host for this user only and never shown again. */
-function ApiKey({ keySet, onSave, onClear }: { keySet: boolean | null; onSave: (key: string) => Promise<void>; onClear: () => Promise<void> }) {
+function ApiKey({ keySet, onSave, onClear, hint }: { keySet: boolean | null; onSave: (key: string) => Promise<void>; onClear: () => Promise<void>; hint?: string }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -368,7 +372,7 @@ function ApiKey({ keySet, onSave, onClear }: { keySet: boolean | null; onSave: (
           Save
         </button>
       </div>
-      <span className={`tv-small ${error ? "tv-error" : ""}`}>{error ?? "Get a key at platform.priorlabs.ai. It is stored for your Google account only."}</span>
+      <span className={`tv-small ${error ? "tv-error" : ""}`}>{error ?? `Get a key at platform.priorlabs.ai. ${hint ?? ""}`.trim()}</span>
     </>
   );
 }

@@ -39,23 +39,9 @@ services:
       TAVOLIO_REG_PARITY: /model/model-parity-reg.json
     command: node --test dist/tabpfn-model.test.js dist/tabpfn-regression-model.test.js
 
-  # Dev server with hot reload: https://localhost:3000 (HTTPS when .docker/certs exists;
-  # see docker/gen-certs.sh). Serves the mock spreadsheet in a browser, and the real
-  # UI to Excel (manifest.local.xml). Sheets uses `serve` below instead.
-  # Requires the one-time install + build via `base` first (see above).
-  app:
-    build:
-      context: .
-      target: app
-    volumes:
-      - .:/repo
-    working_dir: /repo
-    ports:
-      - "3000:3000"
-    command: npm run dev --workspace=google-sheets -- --host 0.0.0.0 --port 3000
-
-  # Watched production build served at https://localhost:3000 for the direct Sheets sidebar
-  # (appsscript/Loader.html loads assets/app.js). `make serve`. Same port as `app`: run one at a time.
+  # Watched production build served at https://localhost:3000 (HTTPS when .docker/certs exists; see docker/gen-certs.sh)
+  # for both hosts: the Sheets sidebar (appsscript/Loader.html loads assets/app.js) and the Excel task pane
+  # (manifest.local.xml opens /?host=excel). `make serve`. Needs the one-time `make install` first.
   serve:
     build:
       context: .

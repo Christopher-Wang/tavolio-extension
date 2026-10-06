@@ -17,7 +17,3 @@ RUN npm run build
 
 FROM base AS test
 CMD ["npm", "run", "test", "--workspace=tests-integration"]
-
-FROM base AS app
-EXPOSE 5173
-CMD ["npm", "run", "dev", "--workspace=google-sheets", "--", "--host", "0.0.0.0", "--port", "5173"]

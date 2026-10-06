@@ -10,3 +10,6 @@ apps/google-sheets/dev-dist/
 packages/*/dist/
 tests/integration/dist/
 .docker/
+
+# Demo recordings: hosted as GitHub attachments, too large for the repo
+demos/
