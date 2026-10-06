@@ -51,7 +51,7 @@ export interface TavolioAppProps {
    * A second, hosted model the user can pick on the Predict tab (their data is sent to it), and where their API key for it lives.
    * Absent: only the on-device model is offered.
    */
-  remote?: { modelId: string; keys: ApiKeyStore };
+  remote?: { modelId: string; keys: ApiKeyStore; /** Where the key lives, shown under the key field. */ keyHint?: string };
 }
 
 /** Where predictions run: on this device, or on the hosted API. */
@@ -426,6 +426,8 @@ export function TavolioApp({ host, theme: fallbackTheme = "light", brand = true,
         gpu={gpu}
         modelName={manifest.displayName}
         remote={!!remote}
+        keyHint={remote?.keyHint}
+        stackEngines={host.kind === "excel"}
         engine={engine}
         onEngine={(e) => {
           setEngine(e);

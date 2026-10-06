@@ -229,6 +229,10 @@ export const css = /* css */ `
 .tv-privacy svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--accent); }
 .tv-privacy b { display: block; font-size: 13px; margin-bottom: 1px; }
 .tv-engine { grid-template-columns: 1fr 1fr; gap: 8px; }
+.tv-engine-stack { grid-template-columns: 1fr; }
+.tv-engine-stack .tv-engine-card { grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 2px; align-items: center; }
+.tv-engine-stack .tv-engine-card svg { grid-row: 1 / span 2; }
+.tv-engine-stack .tv-engine-card b, .tv-engine-stack .tv-engine-card span { grid-column: 2; }
 .tv-engine-card {
   position: relative; display: grid; gap: 4px; align-content: start; padding: 12px; cursor: pointer; border-radius: var(--radius);
   border: 1px solid transparent; background: var(--surface); color: var(--muted); transition: border-color 120ms, background 120ms, color 120ms;

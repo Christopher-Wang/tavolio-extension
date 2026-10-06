@@ -39,34 +39,55 @@ docker compose run --rm typecheck
 # run integration tests (churn/housing/messy fixtures)
 docker compose run --rm test
 
-# playground: mock spreadsheet + real sidebar (https://localhost:3000, see below)
-docker compose up app
+# serve the UI over HTTPS for Excel and Sheets (https://localhost:3000, see below)
+docker compose up serve
 ```
 
 ## Run locally over HTTPS (Excel + Sheets)
 
-Excel task panes and the Sheets iframe both need HTTPS. `make dev` serves the UI
-(hot reload) at `https://localhost:3000`; UI changes never need re-installing.
+Excel task panes and the Sheets sidebar both need HTTPS. One command serves both:
+`make serve` builds the UI in watch mode and serves it at `https://localhost:3000`.
+There is no hot reload: reload the pane after each rebuild.
+The same server relays the TabPFN API's table uploads for Excel (`/relay/upload`): they go to
+Google Cloud Storage, which a browser can't call directly. Restart `make serve` after changing
+`docker/serve-dist.mjs`; the bundle itself rebuilds on its own. Source changes never
+need re-installing.
+
+### One-time setup
 
 ```sh
-make certs     # one-time: local CA + localhost cert -> .docker/certs (gitignored)
-make install   # one-time
-make dev       # https://localhost:3000
+make certs     # local CA + localhost cert -> .docker/certs (gitignored)
+make install   # npm install
 ```
 
-Trust `.docker/certs/rootCA.pem` once, or the browser refuses the page:
+Then **trust the local CA, `.docker/certs/rootCA.pem`**, in the browser you use for
+Excel/Sheets. Without this the browser blocks the UI. For Sheets it fails silently:
+the sidebar shows "Could not load https://localhost:3000/assets/app.js" (Firefox's
+console says "CORS request did not succeed, Status code: (null)").
 
-- macOS/Chrome/Safari: open the file, add to Keychain (System), set "Always Trust".
-- Firefox: Settings -> Privacy & Security -> View Certificates -> Authorities ->
-  Import, tick "Trust this CA to identify websites". (Or set
-  `security.enterprise_roots.enabled` to true in about:config to use the Keychain.)
+- **Firefox** (keeps its own certificate store and ignores the macOS Keychain): Settings ->
+  Privacy & Security -> View Certificates -> Authorities -> Import `rootCA.pem`, tick
+  "Trust this CA to identify websites", then restart Firefox. Clicking through the
+  "Accept the Risk" page is not enough for the Sheets sidebar. Alternatively set
+  `security.enterprise_roots.enabled` to `true` in `about:config` and trust the file in the
+  Keychain as below.
+- **Chrome / Safari / Edge on macOS**: trust it in the System Keychain, then fully quit and
+  reopen the browser:
+  ```sh
+  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain .docker/certs/rootCA.pem
+  ```
+  (or open the file in Keychain Access, add it to System, set "Always Trust").
 
-Opening `https://localhost:3000` in a plain tab shows the mock spreadsheet.
+Check it worked: open `https://localhost:3000/assets/app.js` in a tab (after `make serve`
+has built it). You should see JavaScript and no certificate warning.
+
+If the Sheets sidebar still fails, check the Sheets tab for a content blocker (Firefox
+shield icon, uBlock, Privacy Badger) or a local-network permission prompt.
 
 ### Excel (web)
 
 Insert -> Add-ins -> Manage My Add-ins -> Upload My Add-in ->
-`apps/excel/manifest.local.xml` (dev server). A production manifest comes with the hosted backend.
+`apps/excel/manifest.local.xml` (served by `make serve`). A production manifest comes with the hosted backend.
 Re-upload only if the manifest itself changes.
 
 ### Google Sheets
@@ -76,7 +97,7 @@ Extensions -> Apps Script. Paste the three files from `apps/google-sheets/appssc
 **Tavolio -> Open Tavolio**. The sidebar runs the UI bundle directly in its own document
 (`Loader.html` loads `assets/app.js` from `TAVOLIO_URL` in `Code.gs`), so only edits to those
 three files ever need re-pasting. `make serve` serves the watched build at https://localhost:3000
-(stop `make dev` first, they share the port; there is no hot reload on this path).
+(reload the sidebar after each rebuild).
 
 ## Hosts
 

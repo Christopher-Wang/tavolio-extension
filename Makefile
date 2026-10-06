@@ -5,7 +5,7 @@ DOCKER ?= docker
 CERTS  := .docker/certs
 
 .DEFAULT_GOAL := help
-.PHONY: help install build typecheck test test-model certs dev serve clean-dist down
+.PHONY: help install build typecheck test test-model certs serve clean-dist down
 
 help: ## List commands
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -30,10 +30,7 @@ certs: ## One-time: local CA + localhost cert in .docker/certs (then trust rootC
 	$(DOCKER) run --rm -v "$(CURDIR)/$(CERTS)":/certs -v "$(CURDIR)/docker/gen-certs.sh":/gen.sh:ro \
 	  node:22-alpine sh -c "apk add -q --no-cache openssl && sh /gen.sh"
 
-dev: ## Dev server with hot reload: https://localhost:3000 (mock sheet + real UI)
-	$(DC) up app
-
-serve: ## Watched build served at https://localhost:3000 for the direct Sheets sidebar (no hot reload)
+serve: ## Watched build served at https://localhost:3000 for Excel and the Sheets sidebar (reload the pane after each rebuild)
 	$(DC) up serve
 
 clean-dist: ## Remove build output
