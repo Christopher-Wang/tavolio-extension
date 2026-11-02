@@ -202,3 +202,8 @@ ranking only).
   use only; shipping needs a Prior Labs agreement. `tools/tabpfn-export/out/` is gitignored.
 - Not ported: text columns and TabPFN's 4-estimator ensemble.
 - No backend/auth/billing yet, intentionally, until the local loop is excellent.
+
+## License
+
+The code in this repository is licensed under the [Apache License 2.0](LICENSE).
+The TabPFN model weights are not covered by it; see the TabPFN licence note above.
